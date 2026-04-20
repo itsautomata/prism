@@ -17,7 +17,6 @@ import type {
   Message,
   StreamEvent,
   Usage,
-  TextBlock,
   ToolUseBlock,
 } from '../types/index.js'
 
@@ -73,7 +72,7 @@ interface OllamaStreamChunk {
 export class OllamaProvider implements ProviderBridge {
   name = 'ollama'
   private baseUrl = 'http://localhost:11434'
-  private model = 'qwen2.5-coder:7b'
+  private model = 'gemma4:e4b'
   private capabilities: ModelCapabilities = { ...DEFAULT_CAPABILITIES }
 
   async connect(config: ProviderConfig): Promise<void> {
@@ -185,30 +184,6 @@ export class OllamaProvider implements ProviderBridge {
       }
     }
 
-    // if model dumped tool calls as text instead of structured tool_calls,
-    // parse them from the text content.
-    if (toolCalls.length === 0 && fullText) {
-      // gemma4 native format: always parse (call:Tool{...} is unambiguous)
-      const gemmaCall = tryParseGemmaFormat(fullText)
-      if (gemmaCall) {
-        toolCalls = [gemmaCall]
-        yield { type: 'tool_call_start', id: gemmaCall.id, name: gemmaCall.name }
-        yield { type: 'tool_call_delta', id: gemmaCall.id, inputJson: JSON.stringify(gemmaCall.input) }
-        yield { type: 'tool_call_end', id: gemmaCall.id }
-      } else {
-        // JSON format: be conservative (only single call, minimal surrounding text)
-        const parsed = parseToolCallsFromText(fullText)
-        if (parsed.length === 1 && isSingleToolCallResponse(fullText)) {
-          toolCalls = parsed
-          for (const tc of parsed) {
-            yield { type: 'tool_call_start', id: tc.id, name: tc.name }
-            yield { type: 'tool_call_delta', id: tc.id, inputJson: JSON.stringify(tc.input) }
-            yield { type: 'tool_call_end', id: tc.id }
-          }
-        }
-      }
-    }
-
     const stopReason = toolCalls.length > 0 ? 'tool_use' : 'end_turn'
 
     yield {
@@ -282,7 +257,7 @@ export class OllamaProvider implements ProviderBridge {
   }
 
   private buildRequestBody(params: MessageParams) {
-    const messages = params.messages.map(m => this.formatMessage(m))
+    const messages = this.formatMessages(params.messages)
 
     if (params.system) {
       messages.unshift({ role: 'system', content: params.system })
@@ -308,205 +283,63 @@ export class OllamaProvider implements ProviderBridge {
     return body
   }
 
-  private formatMessage(msg: Message): { role: string; content: string; tool_call_id?: string } {
-    const role = msg.role === 'assistant' ? 'assistant' : 'user'
+  /**
+   * format a message for ollama's /api/chat.
+   * a single internal message may expand to multiple ollama messages
+   * (e.g. a user message with multiple tool_results becomes multiple tool messages).
+   */
+  private formatMessages(msgs: Message[]): { role: string; content: string; tool_calls?: OllamaToolCall[]; tool_call_id?: string }[] {
+    const result: { role: string; content: string; tool_calls?: OllamaToolCall[]; tool_call_id?: string }[] = []
 
-    // flatten content blocks to string
-    const parts: string[] = []
-    for (const block of msg.content) {
-      switch (block.type) {
-        case 'text':
-          parts.push(block.text)
-          break
-        case 'tool_result':
-          // ollama uses role: 'tool' for results, but in /api/chat
-          // we send it as a user message with context
-          return {
-            role: 'tool',
-            content: typeof block.content === 'string'
-              ? block.content
-              : JSON.stringify(block.content),
-            tool_call_id: block.toolUseId,
+    for (const msg of msgs) {
+      if (msg.role === 'assistant') {
+        // assistant messages: extract text + tool_calls separately
+        const textParts: string[] = []
+        const toolCalls: OllamaToolCall[] = []
+
+        for (const block of msg.content) {
+          if (block.type === 'text') {
+            textParts.push(block.text)
+          } else if (block.type === 'tool_use') {
+            toolCalls.push({
+              function: {
+                name: block.name,
+                arguments: block.input,
+              },
+            })
           }
-        case 'tool_use':
-          // tool calls are in assistant messages, handled by response parsing
-          parts.push(`[calling tool: ${block.name}]`)
-          break
-        case 'thinking':
-          // skip thinking blocks for non-thinking models
-          break
-        case 'image':
-          parts.push('[image]')
-          break
+        }
+
+        result.push({
+          role: 'assistant',
+          content: textParts.join('\n'),
+          ...(toolCalls.length > 0 ? { tool_calls: toolCalls } : {}),
+        })
+      } else {
+        // user messages: split tool_results into separate tool messages
+        const textParts: string[] = []
+
+        for (const block of msg.content) {
+          if (block.type === 'tool_result') {
+            result.push({
+              role: 'tool',
+              content: typeof block.content === 'string'
+                ? block.content
+                : JSON.stringify(block.content),
+              tool_call_id: block.toolUseId,
+            })
+          } else if (block.type === 'text') {
+            textParts.push(block.text)
+          }
+        }
+
+        // if there was non-tool text, add it as a user message
+        if (textParts.length > 0) {
+          result.push({ role: 'user', content: textParts.join('\n') })
+        }
       }
     }
 
-    return { role, content: parts.join('\n') }
-  }
-}
-
-/**
- * check if the response is primarily a single tool call,
- * not a multi-option explanation with JSON examples.
- */
-function isSingleToolCallResponse(text: string): boolean {
-  // count JSON blocks — if more than 1, it's showing options
-  const jsonBlocks = (text.match(/```(?:json)?[\s\S]*?```/g) || []).length
-  if (jsonBlocks > 1) return false
-
-  // if there's a question mark, the model is asking, not executing
-  if (text.includes('Which option') || text.includes('which option') ||
-      text.includes('Would you like') || text.includes('would you like') ||
-      text.includes('Do you want') || text.includes('do you want')) {
-    return false
-  }
-
-  // if the non-JSON text is very long, the model is explaining, not calling
-  const textWithoutJson = text.replace(/```(?:json)?[\s\S]*?```/g, '').trim()
-  // allow some intro text ("Let me check that for you.") but not paragraphs
-  if (textWithoutJson.length > 200) return false
-
-  return true
-}
-
-/**
- * parse tool calls from text content.
- * some models (qwen, deepseek) dump tool calls as JSON text
- * instead of using structured tool_calls.
- * handles: raw JSON, markdown code blocks, multiple calls.
- */
-function parseToolCallsFromText(text: string): ToolUseBlock[] {
-  const results: ToolUseBlock[] = []
-
-  // try to extract JSON from markdown code blocks first
-  const codeBlockPattern = /```(?:json)?\s*\n?([\s\S]*?)\n?```/g
-  let match: RegExpExecArray | null
-
-  while ((match = codeBlockPattern.exec(text)) !== null) {
-    const parsed = tryParseToolCall(match[1].trim())
-    if (parsed) results.push(parsed)
-  }
-
-  if (results.length > 0) return results
-
-  // try the full text as JSON
-  const parsed = tryParseToolCall(text.trim())
-  if (parsed) results.push(parsed)
-
-  if (results.length > 0) return results
-
-  // try to find JSON objects in the text
-  const jsonPattern = /\{[^{}]*"name"\s*:\s*"[^"]+"\s*,\s*"arguments"\s*:\s*\{[^}]*\}[^{}]*\}/g
-  while ((match = jsonPattern.exec(text)) !== null) {
-    const parsed = tryParseToolCall(match[0])
-    if (parsed) results.push(parsed)
-  }
-
-  return results
-}
-
-function tryParseToolCall(text: string): ToolUseBlock | null {
-  // gemma4 native format: call:ToolName{key:<|"|>value<|"|>,key2:<|"|>value2<|"|>}
-  const gemmaResult = tryParseGemmaFormat(text)
-  if (gemmaResult) return gemmaResult
-
-  // JSON formats
-  try {
-    const obj = JSON.parse(text)
-
-    // format: { "name": "Bash", "arguments": { "command": "pwd" } }
-    if (obj.name && obj.arguments && typeof obj.arguments === 'object') {
-      return {
-        type: 'tool_use',
-        id: crypto.randomUUID(),
-        name: obj.name.split(' ')[0],
-        input: obj.arguments,
-      }
-    }
-
-    // format: { "tool": "Bash", "input": { "command": "pwd" } }
-    if (obj.tool && obj.input && typeof obj.input === 'object') {
-      return {
-        type: 'tool_use',
-        id: crypto.randomUUID(),
-        name: obj.tool,
-        input: obj.input,
-      }
-    }
-  } catch {
-    // not valid JSON
-  }
-
-  return null
-}
-
-/**
- * parse gemma4's native tool call format.
- *
- * gemma4 outputs tool calls as:
- *   call:Write{content:<|"|>file content here<|"|>,file_path:<|"|>todo.py<|"|>}
- *   call:Bash{command:<|"|>ls -la<|"|>}
- *
- * the <|"|> delimiters wrap values. values can contain any character
- * including newlines, quotes, braces — the delimiters are the only boundary.
- */
-function tryParseGemmaFormat(text: string): ToolUseBlock | null {
-  // match anywhere in text, not just start (model may prefix with explanation)
-  const callMatch = text.match(/call:(\w+)\{([\s\S]*)\}/)
-  if (!callMatch) return null
-
-  const name = callMatch[1]!
-  const argsBody = callMatch[2]!
-  const input: Record<string, unknown> = {}
-
-  // parse <|"|> delimited key:value pairs
-  // pattern: key:<|"|>value<|"|>
-  // values can contain ANYTHING between delimiters (newlines, quotes, braces)
-  let pos = 0
-  while (pos < argsBody.length) {
-    // skip whitespace and commas
-    while (pos < argsBody.length && /[\s,]/.test(argsBody[pos]!)) pos++
-    if (pos >= argsBody.length) break
-
-    // read key (word characters until :)
-    const keyMatch = argsBody.slice(pos).match(/^(\w+):/)
-    if (!keyMatch) break
-    const key = keyMatch[1]!
-    pos += keyMatch[0].length
-
-    // expect <|"|> opening delimiter
-    const openDelim = '<|"|>'
-    if (argsBody.slice(pos, pos + openDelim.length) !== openDelim) {
-      // no delimiter — try reading until next comma or end
-      const rawEnd = argsBody.indexOf(',', pos)
-      const rawValue = rawEnd === -1
-        ? argsBody.slice(pos).trim()
-        : argsBody.slice(pos, rawEnd).trim()
-      input[key] = rawValue
-      pos = rawEnd === -1 ? argsBody.length : rawEnd + 1
-      continue
-    }
-    pos += openDelim.length
-
-    // read value until closing <|"|>
-    const closeDelim = '<|"|>'
-    const closeIdx = argsBody.indexOf(closeDelim, pos)
-    if (closeIdx === -1) {
-      // no closing delimiter — take everything remaining
-      input[key] = argsBody.slice(pos)
-      break
-    }
-
-    input[key] = argsBody.slice(pos, closeIdx)
-    pos = closeIdx + closeDelim.length
-  }
-
-  if (Object.keys(input).length === 0) return null
-
-  return {
-    type: 'tool_use',
-    id: crypto.randomUUID(),
-    name,
-    input,
+    return result
   }
 }
