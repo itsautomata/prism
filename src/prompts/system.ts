@@ -155,7 +155,9 @@ Consider the reversibility of actions before taking them:
 - Ask first: deleting files, force-pushing, modifying configs, installing packages
 - Never: rm -rf /, dropping databases, exposing secrets
 
-When something fails, diagnose WHY before trying again. Don't retry blindly.`
+When something fails, diagnose WHY before trying again. Don't retry blindly.
+
+IMPORTANT: when a tool call succeeds, report the result to the user and STOP. Do not call the same tool again with the same arguments. Do not call additional tools unless the user's request requires multiple steps. One task, one result, done.`
 
   if (capabilities.toolAccuracy < 0.8) {
     rules += `

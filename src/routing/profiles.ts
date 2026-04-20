@@ -21,7 +21,9 @@ you are writing or editing code. be precise.
 - use Read to understand context before making changes
 - if the change spans multiple files, do them in dependency order
 - run tests or checks after editing if a test command is available
-- never guess file paths. use Glob to find files first.`,
+- never guess file paths. use Glob to find files first.
+- when a tool succeeds, tell the user what happened and STOP. do not repeat the same tool call.
+- only continue calling tools if there are more steps the user asked for.`,
 
   reasoning: `# task mode: reasoning
 
@@ -62,7 +64,8 @@ the user wants one quick action.
 - one tool call, minimal explanation
 - don't over-explain what you're about to do
 - execute and show the result
-- if it fails, diagnose briefly and retry once`,
+- if it fails, diagnose briefly and retry once
+- after a successful tool call, respond with the result and STOP. do not call more tools.`,
 }
 
 /**
