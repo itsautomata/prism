@@ -1,7 +1,7 @@
 /**
  * Bash tool.
  * execute shell commands. the most impactful tool.
- * principle #2: safety at the edge — declares its own safety per input.
+ * each command is evaluated for safety independently.
  */
 
 import { z } from 'zod'

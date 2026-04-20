@@ -1,11 +1,12 @@
 /**
  * tool orchestration.
  * partition tool calls into batches: parallel if safe, serial if not.
- * principle #6: serial by default, prove safety to parallelize.
+ * serial by default. parallel only when the tool declares it safe.
  */
 
 import type { Tool, ToolResult, ToolContext } from './Tool.js'
 import type { ToolUseBlock, ToolResultBlock } from '../types/index.js'
+import { needsPermission, allowForSession, isSessionAllowed } from './permissions.js'
 
 const MAX_CONCURRENCY = 10
 
@@ -21,22 +22,30 @@ export function findTool(tools: Tool[], name: string): Tool | undefined {
   return tools.find(t => t.name === name)
 }
 
+export type PermissionResolver = (
+  toolName: string,
+  description: string,
+  id: string,
+) => Promise<'allow_once' | 'allow_session' | 'deny'>
+
 /**
  * run all tool calls from a single assistant turn.
  * partitions into batches based on concurrency safety.
+ * asks for permission on write operations.
  */
 export async function* runToolCalls(
   toolUseBlocks: ToolUseBlock[],
   tools: Tool[],
   context: ToolContext,
+  askPermission?: PermissionResolver,
 ): AsyncGenerator<ToolResultBlock> {
   const batches = partitionIntoBatches(toolUseBlocks, tools)
 
   for (const batch of batches) {
     if (batch.concurrent) {
-      yield* runConcurrent(batch.blocks, tools, context)
+      yield* runConcurrent(batch.blocks, tools, context, askPermission)
     } else {
-      yield* runSerial(batch.blocks, tools, context)
+      yield* runSerial(batch.blocks, tools, context, askPermission)
     }
   }
 }
@@ -75,11 +84,11 @@ async function* runConcurrent(
   blocks: ToolUseBlock[],
   tools: Tool[],
   context: ToolContext,
+  askPermission?: PermissionResolver,
 ): AsyncGenerator<ToolResultBlock> {
-  // limit concurrency
   const limited = blocks.slice(0, MAX_CONCURRENCY)
 
-  const promises = limited.map(block => executeToolCall(block, tools, context))
+  const promises = limited.map(block => executeToolCall(block, tools, context, askPermission))
   const results = await Promise.all(promises)
 
   for (const result of results) {
@@ -96,9 +105,10 @@ async function* runSerial(
   blocks: ToolUseBlock[],
   tools: Tool[],
   context: ToolContext,
+  askPermission?: PermissionResolver,
 ): AsyncGenerator<ToolResultBlock> {
   for (const block of blocks) {
-    const result = await executeToolCall(block, tools, context)
+    const result = await executeToolCall(block, tools, context, askPermission)
     yield {
       type: 'tool_result',
       toolUseId: result.toolUseId,
@@ -147,6 +157,7 @@ async function executeToolCall(
   block: ToolUseBlock,
   tools: Tool[],
   context: ToolContext,
+  askPermission?: PermissionResolver,
 ): Promise<ToolCallResult> {
   // pre-validation: catch obviously wrong calls
   const badCallReason = isObviousBadToolCall(block)
@@ -186,6 +197,7 @@ async function executeToolCall(
 
   // check permissions
   const permission = tool.checkPermissions(parsed.data, context)
+
   if (permission.behavior === 'deny') {
     return {
       toolUseId: block.id,
@@ -193,6 +205,27 @@ async function executeToolCall(
         content: `permission denied: ${permission.message}`,
         isError: true,
       },
+    }
+  }
+
+  // ask user if needed
+  const isReadOnly = tool.isReadOnly(parsed.data)
+  if (askPermission && needsPermission(tool.name, permission, isReadOnly)) {
+    const description = permission.behavior === 'ask' ? permission.message : `run ${tool.name}`
+    const choice = await askPermission(tool.name, description, block.id)
+
+    if (choice === 'deny') {
+      return {
+        toolUseId: block.id,
+        result: {
+          content: `permission denied by user`,
+          isError: true,
+        },
+      }
+    }
+
+    if (choice === 'allow_session') {
+      allowForSession(tool.name)
     }
   }
 
