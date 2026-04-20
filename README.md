@@ -1,8 +1,8 @@
 # prism
 
-**local-first AI coding assistant**
+**free, local-first AI assistant**
 
-> work in progress
+> actively built and tested. expect breaking changes.
 
 ## what it does
 
@@ -11,15 +11,21 @@ you give it a task. it decomposes it into actions, executes them through tools, 
 ## quick start
 
 ```bash
-# install ollama
 brew install ollama
 ollama serve
 ollama pull gemma4:e4b
 
-# clone and run
 cd prism
 npm install
 ./bin/prism
+```
+
+## choose your model
+
+```bash
+prism                     # default (gemma4:e4b)
+prism qwen2.5-coder:7b   # qwen
+prism llama3.2            # llama
 ```
 
 ## tools
@@ -50,22 +56,11 @@ prism learns per model. rules persist across sessions.
 
 ```
 /teach never run git push without asking first
-/teach when I say "check", run the test suite
 /rules
 /forget 2
 ```
 
 rules saved at `~/.prism/models/<model>.json`.
-
-## task routing
-
-prism classifies your input and adapts its behavior:
-
-- **code**: read existing code first, use Edit, match style
-- **reasoning**: think step by step, verify with tools
-- **search**: use Grep and Glob, not Bash
-- **conversation**: respond with text, no tools
-- **simple**: one tool call, minimal output
 
 ## commands
 
@@ -82,11 +77,15 @@ prism classifies your input and adapts its behavior:
 ## run from anywhere
 
 ```bash
-# symlink (recommended)
 sudo ln -s $(pwd)/bin/prism /usr/local/bin/prism
 
 # then from any directory
 prism
 prism qwen2.5-coder:7b
-prism gemma4:e4b
 ```
+
+## note
+
+different models have different strengths. tool calling, reasoning.. quality varies. some will outperform others while others will do very badly.
+but I'm actively closing the gaps as best as possible.
+
