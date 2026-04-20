@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+
+# prism — one interface in. every provider out.
+# run from anywhere. resolves its own location.
+
+PRISM_DIR="$(cd "$(dirname "$(readlink -f "$0" 2>/dev/null || realpath "$0" 2>/dev/null || echo "$0")")/.." && pwd)"
+MODEL="${1:-gemma4:e4b}"
+
+exec npx --prefix "$PRISM_DIR" tsx "$PRISM_DIR/src/cli.ts" "$MODEL"

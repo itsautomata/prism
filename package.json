@@ -2,10 +2,10 @@
   "name": "prism",
   "version": "0.1.0",
   "private": true,
-  "description": "one interface in. every provider out.",
+  "description": "local-first AI coding assistant",
   "type": "module",
   "bin": {
-    "prism": "./dist/cli.js"
+    "prism": "./bin/prism"
   },
   "scripts": {
     "build": "tsup src/cli.ts --format esm --dts",
