@@ -1,9 +1,14 @@
 #!/usr/bin/env bash
 
-# prism — one interface in. every provider out.
+# prism — local-first AI coding assistant.
 # run from anywhere. resolves its own location.
+#
+# usage:
+#   prism                          single model (qwen2.5-coder:7b)
+#   prism gemma4:e4b               single model
+#   prism --duo                    gemma4 thinks, qwen executes
+#   prism --duo llama3.2 mistral   custom pair
 
 PRISM_DIR="$(cd "$(dirname "$(readlink -f "$0" 2>/dev/null || realpath "$0" 2>/dev/null || echo "$0")")/.." && pwd)"
-MODEL="${1:-gemma4:e4b}"
 
-exec npx --prefix "$PRISM_DIR" tsx "$PRISM_DIR/src/cli.ts" "$MODEL"
+exec npx --prefix "$PRISM_DIR" tsx "$PRISM_DIR/src/cli.ts" "$@"

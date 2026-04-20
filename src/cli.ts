@@ -1,6 +1,10 @@
 /**
- * prism — one interface in. every provider out.
- * entry point. connects provider, launches Ink UI.
+ * prism entry point.
+ *
+ * usage:
+ *   prism                          default model (gemma4:e4b)
+ *   prism gemma4:e4b               gemma4
+ *   prism qwen2.5-coder:7b         qwen
  */
 
 import React from 'react'
@@ -13,7 +17,6 @@ async function main() {
   const model = process.argv[2] || 'gemma4:e4b'
   const provider = new OllamaProvider()
 
-  // connect
   try {
     await provider.connect({ model })
   } catch (e) {
@@ -24,7 +27,6 @@ async function main() {
   const capabilities = provider.getCapabilities()
   const tools = [BashTool, ReadTool, EditTool, WriteTool, GlobTool, GrepTool]
 
-  // launch UI
   const { waitUntilExit } = render(
     React.createElement(App, { provider, model, tools, capabilities })
   )
