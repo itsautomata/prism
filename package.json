@@ -2,7 +2,7 @@
   "name": "prism",
   "version": "0.1.0",
   "private": true,
-  "description": "local-first AI coding assistant",
+  "description": "local-first AI assistant",
   "type": "module",
   "bin": {
     "prism": "./bin/prism"

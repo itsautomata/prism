@@ -15,7 +15,7 @@ export function Banner({ model, provider, maxTools, accuracy, rulesCount }: Bann
     <Box flexDirection="column" marginBottom={1}>
       <Box>
         <Text color={theme.primary} bold>◆ prism</Text>
-        <Text color={theme.textDim}> — one interface in. every provider out.</Text>
+        <Text color={theme.textDim}> — local-first AI assistant</Text>
       </Box>
       <Box>
         <Text color={theme.textDim}>  {provider}</Text>
