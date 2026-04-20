@@ -2,11 +2,12 @@
 
 **free, local-first AI assistant**
 
-> actively built and tested. expect breaking changes.
+Prism is an open source coding assistant that runs locally on your machine. you give it a task, it reads your code, edits files, runs commands...
+powered by Ollama. but not exclusively, other providers will be added soon.
 
-## what it does
+> actively built and tested. expect breaking changes. decentralized intelligence is cool
 
-you give it a task. it decomposes it into actions, executes them through tools, and recomposes the results into one response. runs locally on Ollama, free.
+![prism](assets/prism.png)
 
 ## quick start
 
@@ -87,5 +88,4 @@ prism qwen2.5-coder:7b
 ## note
 
 different models have different strengths. tool calling, reasoning.. quality varies. some will outperform others while others will do very badly.
-but I'm actively closing the gaps as best as possible.
-
+but I'm actively closing the gaps as best as possible. 
