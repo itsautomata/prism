@@ -63,6 +63,7 @@ function getWorkflow(tools: ToolSchema[]): string {
 3. use the right tool. Read over cat, Edit over sed, Grep over grep, Glob over find.
 4. one step at a time. verify before moving to the next.
 5. report what you did. be specific.
+6. writing code in your response is NOT the same as saving it. to create or modify a file, you MUST use Write or Edit. never claim you saved a file unless you called a tool to do it.
 
 # tools
 
