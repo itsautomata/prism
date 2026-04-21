@@ -1,6 +1,7 @@
 import React from 'react'
 import { Box, Text } from 'ink'
 import { theme } from './theme.js'
+import { Markdown } from './Markdown.js'
 
 export interface DisplayMessage {
   role: 'user' | 'assistant' | 'tool_call' | 'tool_result'
@@ -37,7 +38,7 @@ function MessageBlock({ message }: { message: DisplayMessage }) {
     case 'assistant':
       return (
         <Box marginTop={0} marginBottom={0} marginLeft={2}>
-          <Text color={theme.text}>{message.text}</Text>
+          <Markdown text={message.text} />
         </Box>
       )
 
@@ -58,7 +59,7 @@ function MessageBlock({ message }: { message: DisplayMessage }) {
         )
       }
       return (
-        <Box marginTop={0} marginBottom={0} marginLeft={4} >
+        <Box marginTop={0} marginBottom={0} marginLeft={4}>
           <Text color={theme.toolOutput}>
             {message.text.length > 500
               ? message.text.slice(0, 500) + '\n...(truncated)'
