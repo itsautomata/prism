@@ -13,6 +13,8 @@ import { loadProfile, addRule, removeRule, setMaxTools, type ModelProfile } from
 import { classifyTask } from '../routing/classifier.js'
 import { scanProject } from '../context/scanner.js'
 import type { ProjectContext } from '../context/types.js'
+import { saveSession } from '../sessions/store.js'
+import type { Session } from '../sessions/types.js'
 import type { ProviderBridge, Message, ModelCapabilities } from '../types/index.js'
 import type { Tool } from '../tools/Tool.js'
 
@@ -21,11 +23,27 @@ interface AppProps {
   model: string
   tools: Tool[]
   capabilities: ModelCapabilities
+  session: Session
+  initialMessages?: Message[]
 }
 
-export function App({ provider, model, tools, capabilities: initCaps }: AppProps) {
+export function App({ provider, model, tools, capabilities: initCaps, session, initialMessages }: AppProps) {
   const { exit } = useApp()
-  const [displayMessages, setDisplayMessages] = useState<DisplayMessage[]>([])
+  const [displayMessages, setDisplayMessages] = useState<DisplayMessage[]>(() => {
+    // rebuild display messages from resumed session
+    if (!initialMessages || initialMessages.length === 0) return []
+    const display: DisplayMessage[] = []
+    for (const msg of initialMessages) {
+      for (const block of msg.content) {
+        if (msg.role === 'user' && block.type === 'text') {
+          display.push({ role: 'user', text: block.text })
+        } else if (msg.role === 'assistant' && block.type === 'text') {
+          display.push({ role: 'assistant', text: block.text })
+        }
+      }
+    }
+    return display
+  })
   const [isLoading, setIsLoading] = useState(false)
   const [turnCount, setTurnCount] = useState(0)
   const [inputTokens, setInputTokens] = useState(0)
@@ -41,8 +59,8 @@ export function App({ provider, model, tools, capabilities: initCaps }: AppProps
   // scan project once on mount
   const [projectContext] = useState(() => scanProject(process.cwd()))
 
-  // persistent conversation
-  const [messages] = useState<Message[]>([])
+  // persistent conversation (loaded from session on resume)
+  const [messages] = useState<Message[]>(() => initialMessages ? [...initialMessages] : [])
 
   const toolSchemas = tools.map(t => toolToSchema(t))
 
@@ -190,6 +208,10 @@ export function App({ provider, model, tools, capabilities: initCaps }: AppProps
         content: [{ type: 'text', text: 'the user interrupted the current operation. stop what you were doing and ask what they want instead.' }],
       })
     }
+
+    // auto-save session after every turn
+    session.messages = messages
+    saveSession(session)
 
     setAbortController(null)
     setIsLoading(false)
