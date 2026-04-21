@@ -9,7 +9,6 @@ import { join, basename, extname } from 'path'
 import { homedir } from 'os'
 import type {
   ProjectContext,
-  ProjectInfo,
   StructureInfo,
   GitInfo,
   DepsInfo,
@@ -162,27 +161,25 @@ const IGNORE_DIRS = new Set([
 ])
 
 export function scanProject(cwd: string): ProjectContext {
+  // single pass: compute structure and deps once, share across detections
+  const structure = detectStructure(cwd)
+  const deps = detectDeps(cwd)
+  const language = detectLanguage(structure.filesByType)
+
   return {
-    project: detectProject(cwd),
-    structure: detectStructure(cwd),
+    project: {
+      name: basename(cwd),
+      language,
+      framework: detectFramework(deps.names),
+      entryPoint: detectEntryPoint(cwd, language),
+    },
+    structure,
     git: detectGit(cwd),
-    deps: detectDeps(cwd),
+    deps,
     prism: detectPrismState(cwd),
     runtime: detectRuntime(),
   }
 }
-
-function detectProject(cwd: string): ProjectInfo {
-  const name = basename(cwd)
-  const structure = detectStructure(cwd)
-  const language = detectLanguage(structure.filesByType)
-  const deps = detectDeps(cwd)
-  const framework = detectFramework(deps.names)
-  const entryPoint = detectEntryPoint(cwd, language)
-
-  return { name, language, framework, entryPoint }
-}
-
 function detectLanguage(filesByType: Record<string, number>): string | null {
   let best: string | null = null
   let bestCount = 0
