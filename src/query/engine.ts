@@ -156,14 +156,31 @@ export async function* query(options: QueryOptions): AsyncGenerator<QueryEvent> 
     }
 
     // append tool results as user message
-    messages.push({ role: 'user', content: toolResults })
+    const hasErrors = toolResults.some(r => r.isError)
+
+    if (hasErrors) {
+      messages.push({
+        role: 'user',
+        content: [
+          ...toolResults,
+          { type: 'text' as const, text: `the command failed. diagnose before acting:
+1. list the possible causes, most likely first.
+2. tell the user what you think went wrong and why.
+3. decide:
+   - if the command itself was wrong (bad path, bad args, typo): fix the command.
+   - if the command was right but something is missing (package, file, service): fix what is missing, then run the same command again.
+   - if the approach is wrong: try a different approach entirely.` },
+        ],
+      })
+    } else {
+      messages.push({ role: 'user', content: toolResults })
+    }
 
     turnCount++
   }
 }
 
 /**
- * budget tools based on model capability.
  * select tools based on model capability.
  */
 function budgetTools(tools: Tool[], maxTools: number): ToolSchema[] {
@@ -221,3 +238,4 @@ function collectContentBlock(event: StreamEvent, content: ContentBlock[]): void 
     }
   }
 }
+
