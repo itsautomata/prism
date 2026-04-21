@@ -21,7 +21,7 @@ const MAX_LINES = 2000
 
 export const ReadTool = buildTool<ReadInput>({
   name: 'Read',
-  description: 'Read a file from the filesystem. Returns contents with line numbers.',
+  description: 'Read a file from the filesystem. Returns contents with line numbers. Parameters: file_path (absolute path), offset (optional, start line), limit (optional, number of lines).',
 
   inputSchema,
 

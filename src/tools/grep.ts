@@ -36,7 +36,7 @@ function hasRipgrep(): boolean {
 
 export const GrepTool = buildTool<GrepInput>({
   name: 'Grep',
-  description: 'Search file contents for a regex pattern. Uses ripgrep if available, falls back to grep.',
+  description: 'Search file contents for a regex pattern. Uses ripgrep if available. Parameters: pattern (regex), path (optional, directory), glob (optional, file filter like "*.py"), output_mode (optional: files_with_matches, content, count).',
 
   inputSchema,
 

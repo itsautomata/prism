@@ -20,7 +20,7 @@ type EditInput = z.infer<typeof inputSchema>
 
 export const EditTool = buildTool<EditInput>({
   name: 'Edit',
-  description: 'Replace exact string matches in a file. The old_string must match exactly (including whitespace and indentation).',
+  description: 'Replace exact string matches in a file. Parameters: file_path (absolute path), old_string (exact text to find), new_string (replacement text). old_string must match exactly including whitespace.',
 
   inputSchema,
 

@@ -46,7 +46,7 @@ type BashInput = z.infer<typeof inputSchema>
 
 export const BashTool = buildTool<BashInput>({
   name: 'Bash',
-  description: 'Execute a shell command and return its output.',
+  description: 'Execute a shell command and return its output. Parameters: command (the shell command to run), description (optional, what this command does), timeout (optional, ms).',
 
   inputSchema,
 

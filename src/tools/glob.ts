@@ -18,7 +18,7 @@ type GlobInput = z.infer<typeof inputSchema>
 
 export const GlobTool = buildTool<GlobInput>({
   name: 'Glob',
-  description: 'Find files matching a glob pattern. Returns file paths sorted by modification time.',
+  description: 'Find files matching a glob pattern. Returns file paths sorted by modification time. Parameters: pattern (glob pattern like "*.py"), path (optional, directory to search).',
 
   inputSchema,
 

@@ -18,7 +18,7 @@ type WriteInput = z.infer<typeof inputSchema>
 
 export const WriteTool = buildTool<WriteInput>({
   name: 'Write',
-  description: 'Write content to a file. Creates the file if it does not exist. Overwrites if it does.',
+  description: 'Write content to a file. Creates the file if it does not exist. Overwrites if it does. Parameters: file_path (absolute path), content (the text to write).',
 
   inputSchema,
 
