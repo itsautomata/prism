@@ -1,6 +1,6 @@
 # prism
 
-**free, local-first AI assistant**
+**free, local-first AI coding assistant**
 
 Prism is an open source coding assistant that runs locally on your machine. you give it a task, it reads your code, edits files, runs commands...
 powered by Ollama. but not exclusively, other providers will be added soon.
@@ -62,6 +62,19 @@ prism learns per model. rules persist across sessions.
 ```
 
 rules saved at `~/.prism/models/<model>.json`.
+
+## lens.md
+
+add a `lens.md` to any project to give prism custom instructions for that directory.
+
+example:
+
+```markdown
+# lens.md
+use pytest for testing.
+never modify files in data/.
+this project uses pydantic v2.
+```
 
 ## commands
 
