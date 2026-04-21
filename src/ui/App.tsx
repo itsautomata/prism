@@ -64,9 +64,20 @@ export function App({ provider, model, tools, capabilities: initCaps }: AppProps
     })
   }, [getCapabilities, toolSchemas, profile])
 
-  // handle ctrl+c
+  // abort controller for interrupting the current operation
+  const [abortController, setAbortController] = useState<AbortController | null>(null)
+
+  // handle keyboard: escape interrupts, ctrl+c exits
   useInput((input, key) => {
+    if (key.escape && abortController && isLoading) {
+      abortController.abort()
+      setDisplayMessages(prev => [
+        ...prev,
+        { role: 'tool_result', text: 'interrupted by user', isError: false },
+      ])
+    }
     if (key.ctrl && input === 'c') {
+      if (abortController) abortController.abort()
       exit()
     }
   })
@@ -88,6 +99,10 @@ export function App({ provider, model, tools, capabilities: initCaps }: AppProps
       content: [{ type: 'text', text: input }],
     })
 
+    // create abort controller for this query
+    const controller = new AbortController()
+    setAbortController(controller)
+
     // permission resolver: pauses tool execution, shows prompt, waits for user
     const askPermission = (toolName: string, description: string, id: string) => {
       return new Promise<PermissionChoice>((resolve) => {
@@ -107,6 +122,7 @@ export function App({ provider, model, tools, capabilities: initCaps }: AppProps
         messages,
         maxTurns: 5,
         askPermission,
+        signal: controller.signal,
       })) {
         switch (event.type) {
           case 'text':
@@ -158,12 +174,24 @@ export function App({ provider, model, tools, capabilities: initCaps }: AppProps
         }
       }
     } catch (error) {
-      setDisplayMessages(prev => [
-        ...prev,
-        { role: 'tool_result', text: `error: ${(error as Error).message}`, isError: true },
-      ])
+      const msg = (error as Error).message || String(error)
+      if (!controller.signal.aborted) {
+        setDisplayMessages(prev => [
+          ...prev,
+          { role: 'tool_result', text: `error: ${msg}`, isError: true },
+        ])
+      }
     }
 
+    // if interrupted, inject into conversation so model knows
+    if (controller.signal.aborted) {
+      messages.push({
+        role: 'user',
+        content: [{ type: 'text', text: 'the user interrupted the current operation. stop what you were doing and ask what they want instead.' }],
+      })
+    }
+
+    setAbortController(null)
     setIsLoading(false)
   }, [provider, model, tools, messages, getSystemPrompt])
 

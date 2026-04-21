@@ -13,9 +13,14 @@ export function PromptInput({ onSubmit, isLoading }: PromptInputProps) {
 
   if (isLoading) {
     return (
-      <Box marginTop={1}>
-        <Text color={theme.spinner}>◇ </Text>
-        <Text color={theme.textDim}>thinking...</Text>
+      <Box marginTop={1} flexDirection="column">
+        <Box>
+          <Text color={theme.spinner}>◇ </Text>
+          <Text color={theme.textDim}>thinking...</Text>
+        </Box>
+        <Box>
+          <Text color={theme.textMuted}>  esc to interrupt</Text>
+        </Box>
       </Box>
     )
   }
