@@ -25,11 +25,28 @@ npm install
 
 ## choose your model
 
+### local (free, ollama)
+
 ```bash
-prism                     # default (gemma4:e4b)
-prism qwen2.5-coder:7b   # qwen
-prism llama3.2            # llama
+prism                       # gemma4:e4b (default, not recommended)
+prism qwen3:14b             # recommended: best balance
+prism qwen2.5-coder:7b      # fast, light, good tool use
+prism deepseek-r1:14b       # strong reasoning
 ```
+
+### cloud (openrouter, 200+ models)
+
+add your API key to `~/.prism/config.toml` (created on first run), then:
+
+```bash
+prism --or                                    # qwen3-coder-480b (free, rate limited)
+prism --or deepseek/deepseek-r1               # free, rate limited
+prism --or google/gemini-2.0-flash            # $0.10/M tokens
+prism --or deepseek/deepseek-v3.2             # $0.14/M tokens, best value
+prism --or anthropic/claude-haiku-4.5         # $0.80/M tokens, best tool use
+```
+
+see [openrouter.ai/docs](https://openrouter.ai/docs) for all available models and rate limits.
 
 ## tools
 
