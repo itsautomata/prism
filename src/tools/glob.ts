@@ -32,8 +32,14 @@ export const GlobTool = buildTool<GlobInput>({
       // convert glob pattern to find-compatible pattern
       const pattern = input.pattern
 
+      const excludes = [
+        'node_modules', '.git', '.venv', 'venv', '__pycache__',
+        'dist', 'build', '.next', '.nuxt', 'target', 'coverage',
+        '.mypy_cache', '.pytest_cache', '.egg-info',
+      ].map(d => `-not -path "*/${d}/*"`).join(' ')
+
       const output = execSync(
-        `find "${searchPath}" -type f -name "${pattern.replace(/\*\*\//g, '')}" 2>/dev/null | head -250 | sort`,
+        `find "${searchPath}" -type f -name "${pattern.replace(/\*\*\//g, '')}" ${excludes} 2>/dev/null | head -250 | sort`,
         {
           cwd: searchPath,
           encoding: 'utf-8',
