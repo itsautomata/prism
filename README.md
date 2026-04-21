@@ -20,7 +20,9 @@ ollama pull gemma4:e4b
 
 cd prism
 npm install
-./bin/prism
+sudo ln -s $(pwd)/bin/prism /usr/local/bin/prism
+
+prism
 ```
 
 ## choose your model
@@ -47,6 +49,19 @@ prism --or anthropic/claude-haiku-4.5         # $0.80/M tokens, best tool use
 ```
 
 see [openrouter.ai/docs](https://openrouter.ai/docs) for all available models and rate limits.
+
+### sessions
+
+prism auto-saves your conversation after every turn. resume where you left off:
+
+```bash
+prism --continue                              # resume last session in this directory
+prism -c                                      # same
+prism --or deepseek/deepseek-r1 --continue    # resume with a different model
+prism --sessions                              # list recent sessions
+```
+
+sessions saved at `~/.prism/sessions/`.
 
 ## tools
 
@@ -105,16 +120,6 @@ this project uses pydantic v2.
 /clear            clear conversation
 /help             show commands
 /exit             quit
-```
-
-## run from anywhere
-
-```bash
-sudo ln -s $(pwd)/bin/prism /usr/local/bin/prism
-
-# then from any directory
-prism
-prism qwen2.5-coder:7b
 ```
 
 ## note
