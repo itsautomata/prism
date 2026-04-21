@@ -11,6 +11,8 @@ powered by Ollama. but not exclusively, other providers will be added soon.
 
 ## quick start
 
+requires Ollama v0.20.2+ for proper tool calling.
+
 ```bash
 brew install ollama
 ollama serve
