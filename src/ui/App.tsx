@@ -11,6 +11,8 @@ import { buildSystemPrompt } from '../prompts/system.js'
 import { toolToSchema } from '../tools/Tool.js'
 import { loadProfile, addRule, removeRule, setMaxTools, type ModelProfile } from '../learning/profile.js'
 import { classifyTask } from '../routing/classifier.js'
+import { scanProject } from '../context/scanner.js'
+import type { ProjectContext } from '../context/types.js'
 import type { ProviderBridge, Message, ModelCapabilities } from '../types/index.js'
 import type { Tool } from '../tools/Tool.js'
 
@@ -36,6 +38,9 @@ export function App({ provider, model, tools, capabilities: initCaps }: AppProps
     resolve: (choice: PermissionChoice) => void
   } | null>(null)
 
+  // scan project once on mount
+  const [projectContext] = useState(() => scanProject(process.cwd()))
+
   // persistent conversation
   const [messages] = useState<Message[]>([])
 
@@ -54,6 +59,7 @@ export function App({ provider, model, tools, capabilities: initCaps }: AppProps
       tools: toolSchemas,
       cwd: process.cwd(),
       profile,
+      projectContext,
       taskType,
     })
   }, [getCapabilities, toolSchemas, profile])

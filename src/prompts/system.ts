@@ -9,6 +9,8 @@ import type { ModelProfile } from '../learning/profile.js'
 import { rulesToPrompt } from '../learning/profile.js'
 import type { TaskType } from '../routing/classifier.js'
 import { getTaskProfile } from '../routing/profiles.js'
+import type { ProjectContext } from '../context/types.js'
+import { formatContext } from '../context/inject.js'
 
 interface PromptOptions {
   capabilities: ModelCapabilities
@@ -16,10 +18,11 @@ interface PromptOptions {
   cwd: string
   profile?: ModelProfile
   taskType?: TaskType
+  projectContext?: ProjectContext
 }
 
 export function buildSystemPrompt(options: PromptOptions): string {
-  const { capabilities, tools, cwd, profile, taskType } = options
+  const { capabilities, tools, cwd, profile, taskType, projectContext } = options
 
   const sections = [
     getIdentity(),
@@ -27,6 +30,10 @@ export function buildSystemPrompt(options: PromptOptions): string {
     getConstraints(capabilities),
     getEnvironment(cwd),
   ]
+
+  if (projectContext) {
+    sections.push(formatContext(projectContext))
+  }
 
   if (taskType) {
     sections.push(getTaskProfile(taskType))
