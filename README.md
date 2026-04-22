@@ -67,11 +67,12 @@ sessions saved at `~/.prism/sessions/`.
 | tool | what it does |
 |------|-------------|
 | Bash | execute shell commands |
-| Read | read files with line numbers |
+| Read | read files, PDFs, Word docs, notebooks |
 | Edit | exact string replacement |
 | Write | create or overwrite files |
 | Glob | find files by pattern |
 | Grep | search file contents |
+| Agent | spawn subagents for parallel work |
 
 ## permissions
 
