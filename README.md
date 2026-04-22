@@ -39,7 +39,7 @@ prism qwen3:14b             # best balance
 add your API key to `~/.prism/config.toml` (created on first run), then:
 
 ```bash
-prism --or qwen/qwen3.6-plus                  # $0.325/M tokens
+prism --or qwen/qwen3.6-plus                  # $0.325/M tokens * most recommended for now 
 prism --or deepseek/deepseek-v3.2-speciale    # $0.40/M tokens
 prism --or google/gemini-2.0-flash-lite-001   # $0.075/M
 prism --or anthropic/claude-haiku-4.5         # $1.00/M tokens
