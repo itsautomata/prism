@@ -46,8 +46,7 @@ export function App({ provider, model, tools, capabilities: initCaps, session, i
   })
   const [isLoading, setIsLoading] = useState(false)
   const [turnCount, setTurnCount] = useState(0)
-  const [inputTokens, setInputTokens] = useState(0)
-  const [outputTokens, setOutputTokens] = useState(0)
+  const [tokenInfo, setTokenInfo] = useState('')
   const [profile, setProfile] = useState<ModelProfile>(() => loadProfile(model))
   const [pendingPermission, setPendingPermission] = useState<{
     toolName: string
@@ -109,6 +108,7 @@ export function App({ provider, model, tools, capabilities: initCaps, session, i
 
     // add user message to display
     setDisplayMessages(prev => [...prev, { role: 'user', text: input }])
+    setTurnCount(prev => prev + 1)
     setIsLoading(true)
 
     // add to conversation
@@ -171,6 +171,10 @@ export function App({ provider, model, tools, capabilities: initCaps, session, i
             ])
             // reset currentText for post-tool response
             currentText = ''
+            break
+
+          case 'token_update':
+            setTokenInfo(event.formatted)
             break
 
           case 'done':
@@ -246,8 +250,7 @@ export function App({ provider, model, tools, capabilities: initCaps, session, i
 
       <StatusBar
         turnCount={turnCount}
-        inputTokens={inputTokens}
-        outputTokens={outputTokens}
+        tokenInfo={tokenInfo}
       />
 
       <PromptInput onSubmit={handleSubmit} isLoading={isLoading} />
