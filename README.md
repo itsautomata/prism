@@ -32,7 +32,6 @@ prism
 ```bash
 prism                       # deepseek-r1:14b (default)
 prism qwen3:14b             # best balance
-prism qwen2.5-coder:7b      # fast, light, good tool use
 ```
 
 ### cloud (openrouter, 200+ models)
@@ -40,11 +39,10 @@ prism qwen2.5-coder:7b      # fast, light, good tool use
 add your API key to `~/.prism/config.toml` (created on first run), then:
 
 ```bash
-prism --or                                    # qwen3-coder-480b (free, rate limited)
-prism --or deepseek/deepseek-r1               # free, rate limited
-prism --or google/gemini-2.0-flash            # $0.10/M tokens
-prism --or deepseek/deepseek-v3.2             # $0.14/M tokens, best value
-prism --or anthropic/claude-haiku-4.5         # $0.80/M tokens, best tool use
+prism --or qwen/qwen3.6-plus                  # $0.325/M tokens
+prism --or deepseek/deepseek-v3.2-speciale    # $0.40/M tokens
+prism --or google/gemini-2.0-flash-lite-001   # $0.075/M
+prism --or anthropic/claude-haiku-4.5         # $1.00/M tokens
 ```
 
 see [openrouter.ai/docs](https://openrouter.ai/docs) for all available models and rate limits.
@@ -56,7 +54,7 @@ prism auto-saves your conversation after every turn. resume where you left off:
 ```bash
 prism --continue                              # resume last session in this directory
 prism -c                                      # same
-prism --or deepseek/deepseek-r1 --continue    # resume with a different model
+prism --or qwen3:14b --continue    # resume with a different model
 prism --sessions                              # list recent sessions
 ```
 
@@ -113,6 +111,7 @@ this project uses pydantic v2.
 ## commands
 
 ```
+/model <name>     switch model mid-conversation (keeps context)
 /teach <rule>     teach the model a rule
 /rules            show learned rules
 /forget <n>       remove a rule
