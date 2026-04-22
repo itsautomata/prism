@@ -91,11 +91,13 @@ export class OllamaProvider implements ProviderBridge {
   name = 'ollama'
   private baseUrl = 'http://localhost:11434'
   private model = 'deepseek-r1:14b'
+  private defaultMaxTokens = 10000
   private capabilities: ModelCapabilities = { ...DEFAULT_CAPABILITIES }
 
   async connect(config: ProviderConfig): Promise<void> {
     if (config.baseUrl) this.baseUrl = config.baseUrl
     this.model = config.model
+    if (config.maxTokens) this.defaultMaxTokens = config.maxTokens as number
 
     // look up model-specific capabilities
     const base = Object.keys(MODEL_PROFILES).find(k =>
@@ -294,9 +296,7 @@ export class OllamaProvider implements ProviderBridge {
       body.tools = tools.map(t => this.formatToolSchema(t))
     }
 
-    if (params.maxTokens) {
-      body.options = { num_predict: params.maxTokens }
-    }
+    body.options = { num_predict: params.maxTokens || this.defaultMaxTokens }
 
     return body
   }
