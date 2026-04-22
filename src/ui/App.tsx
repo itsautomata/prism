@@ -227,6 +227,7 @@ export function App({ provider, model, tools, capabilities: initCaps, session, i
         maxTools={caps.maxTools}
         accuracy={caps.toolAccuracy}
         rulesCount={profile.rules.length}
+        isResumed={initialMessages !== undefined && initialMessages.length > 0}
       />
 
       <Box flexDirection="column" flexGrow={1}>
