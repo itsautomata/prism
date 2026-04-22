@@ -20,6 +20,7 @@ import type { Tool, ToolContext } from '../tools/Tool.js'
 import { toolToSchema } from '../tools/Tool.js'
 import { runToolCalls, findTool, type PermissionResolver } from '../tools/orchestration.js'
 import { countConversationTokens, formatTokens } from '../compact/tokens.js'
+import { runAgent } from '../agents/runner.js'
 import { trimOldToolResults } from '../compact/trimmer.js'
 import { snipOldTurns } from '../compact/snip.js'
 import { summarizeOldTurns } from '../compact/summarize.js'
@@ -191,37 +192,51 @@ export async function* query(options: QueryOptions): AsyncGenerator<QueryEvent> 
         ],
       })
     } else if (hasErrors) {
-      // RECOVERY STATE: force diagnosis before retry
-      // step 1: send error results + diagnosis prompt with NO tools
-      //         model MUST respond with text analysis (can't call tools)
-      messages.push({
-        role: 'user',
-        content: [
-          ...toolResults,
-          { type: 'text' as const, text: `the previous tool returned a non-zero exit code. briefly: was this expected (e.g. verifying a file was deleted) or unexpected? if expected, continue with the task. if unexpected, explain the cause and try a different approach.` },
-        ],
-      })
+      const errorDetails = toolResults
+        .filter(r => r.isError)
+        .map(r => typeof r.content === 'string' ? r.content : JSON.stringify(r.content))
+        .join('\n')
 
-      for await (const event of provider.streamMessage({
-        model,
-        messages,
-        system: systemPrompt, // keep prism's identity
-        tools: [], // no tools — forces text response
-        signal,
-      })) {
-        if (event.type === 'text_delta') {
-          yield { type: 'text', text: event.text }
-        }
-        collectContentBlock(event, assistantContent)
+      const failedTools = toolUseBlocks
+        .map(b => `${b.name}(${JSON.stringify(b.input).slice(0, 200)})`)
+        .join(', ')
+
+      // strong models get a recovery agent. weak models get a simple prompt.
+      if (capabilities.toolAccuracy >= 0.75) {
+        // RECOVERY AGENT: fresh context, no bias from the failed attempt
+        yield { type: 'tool_start', name: 'recovery agent', id: 'recovery' }
+
+        const diagnosis = await runRecoveryAgent({
+          provider,
+          model,
+          tools,
+          signal,
+          failedCommand: failedTools,
+          errorOutput: errorDetails,
+          cwd: context.cwd,
+        })
+
+        yield { type: 'tool_end', name: 'recovery agent', id: 'recovery', result: diagnosis }
+
+        messages.push({
+          role: 'user',
+          content: [
+            ...toolResults,
+            { type: 'text' as const, text: `[recovery agent diagnosis]\n${diagnosis}\n[end diagnosis]\napply the fix suggested above.` },
+          ],
+        })
+      } else {
+        // SIMPLE RECOVERY: just ask the model to think about the error
+        messages.push({
+          role: 'user',
+          content: [
+            ...toolResults,
+            { type: 'text' as const, text: `the previous tool returned a non-zero exit code. was this expected or unexpected? if unexpected, explain the cause and try a different approach.` },
+          ],
+        })
       }
 
-      // add the diagnosis to conversation
-      if (assistantContent.length > 0) {
-        messages.push({ role: 'assistant', content: [...assistantContent] })
-        assistantContent.length = 0
-      }
-
-      // step 2: now the model has diagnosed. continue the loop with tools restored.
+      // continue the loop
       // the model's next turn will have tools and can act on its diagnosis.
     } else {
       messages.push({ role: 'user', content: toolResults })
@@ -288,5 +303,40 @@ function collectContentBlock(event: StreamEvent, content: ContentBlock[]): void 
       break
     }
   }
+}
+
+/**
+ * spawn a recovery agent to diagnose a tool failure.
+ * fresh context, can read files and check paths.
+ * returns a diagnosis string.
+ */
+async function runRecoveryAgent(opts: {
+  provider: ProviderBridge
+  model: string
+  tools: Tool[]
+  signal?: AbortSignal
+  failedCommand: string
+  errorOutput: string
+  cwd: string
+}): Promise<string> {
+  const result = await runAgent({
+    description: 'diagnose error',
+    prompt: `a tool call failed. diagnose why and suggest a specific fix.
+
+failed command: ${opts.failedCommand}
+error output: ${opts.errorOutput}
+working directory: ${opts.cwd}
+
+check if relevant files/paths exist. then report:
+1. what went wrong (one sentence)
+2. the fix (one actionable step)`,
+    provider: opts.provider,
+    model: opts.model,
+    tools: opts.tools.filter(t => t.name !== 'Agent'),
+    maxTurns: 3,
+    signal: opts.signal,
+  })
+
+  return result.output || 'recovery agent could not diagnose the error'
 }
 
