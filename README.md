@@ -7,7 +7,7 @@ powered by Ollama. but not exclusively, other providers will be added soon.
 
 > actively built and tested. expect breaking changes. decentralized intelligence is cool
 
-![prism](assets/prism.png)
+![prism](assets/prism_1.png)
 
 ## quick start
 
