@@ -7,7 +7,7 @@
 
 import { z } from 'zod'
 import { buildTool, type ToolResult, type ToolContext } from './Tool.js'
-import { runAgent } from '../agents/runner.js'
+import { runAgent, type AgentProgressEvent } from '../agents/runner.js'
 import type { ProviderBridge } from '../types/index.js'
 import type { Tool } from './Tool.js'
 
@@ -22,16 +22,22 @@ type AgentInput = z.infer<typeof inputSchema>
 let _provider: ProviderBridge | null = null
 let _model: string = ''
 let _tools: Tool[] = []
+let _onProgress: ((event: AgentProgressEvent) => void) | null = null
 
 /**
  * configure the Agent tool with the current provider and tools.
  * called once at startup. agents share the same provider.
  */
-export function configureAgentTool(provider: ProviderBridge, model: string, tools: Tool[]) {
+export function configureAgentTool(
+  provider: ProviderBridge,
+  model: string,
+  tools: Tool[],
+  onProgress?: (event: AgentProgressEvent) => void,
+) {
   _provider = provider
   _model = model
-  // give subagents all tools EXCEPT the Agent tool (no nesting)
   _tools = tools.filter(t => t.name !== 'Agent')
+  _onProgress = onProgress || null
 }
 
 export const AgentTool = buildTool<AgentInput>({
@@ -52,6 +58,7 @@ export const AgentTool = buildTool<AgentInput>({
       model: _model,
       tools: _tools,
       signal: context.signal,
+      onProgress: _onProgress || undefined,
     })
 
     if (!result.success) {

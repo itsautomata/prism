@@ -9,6 +9,11 @@ import type { Tool } from '../tools/Tool.js'
 import { toolToSchema } from '../tools/Tool.js'
 import { runToolCalls } from '../tools/orchestration.js'
 
+export type AgentProgressEvent =
+  | { type: 'thinking'; agent: string; text: string }
+  | { type: 'tool_call'; agent: string; tool: string }
+  | { type: 'tool_result'; agent: string; result: string; isError?: boolean }
+
 interface AgentTask {
   prompt: string
   description: string
@@ -17,6 +22,7 @@ interface AgentTask {
   tools: Tool[]
   maxTurns?: number
   signal?: AbortSignal
+  onProgress?: (event: AgentProgressEvent) => void
 }
 
 interface AgentResult {
@@ -42,7 +48,10 @@ export async function runAgent(task: AgentTask): Promise<AgentResult> {
     tools,
     maxTurns = 5,
     signal,
+    onProgress,
   } = task
+
+  const emit = onProgress || (() => {})
 
   const capabilities = provider.getCapabilities()
   const maxTools = capabilities.maxTools
@@ -80,6 +89,7 @@ export async function runAgent(task: AgentTask): Promise<AgentResult> {
             } else {
               assistantContent.push({ type: 'text', text: event.text })
             }
+            emit({ type: 'thinking', agent: description, text: event.text })
             break
           }
           case 'tool_call_start':
@@ -89,6 +99,7 @@ export async function runAgent(task: AgentTask): Promise<AgentResult> {
               name: event.name,
               input: {},
             })
+            emit({ type: 'tool_call', agent: description, tool: event.name })
             break
           case 'tool_call_delta': {
             const toolBlock = assistantContent.find(
@@ -131,6 +142,13 @@ export async function runAgent(task: AgentTask): Promise<AgentResult> {
     // execute tools (no permission prompts for subagents — auto-allow)
     const toolResults: import('../types/index.js').ToolResultBlock[] = []
     for await (const result of runToolCalls(toolUseBlocks, tools, context)) {
+      const content = typeof result.content === 'string' ? result.content : JSON.stringify(result.content)
+      emit({
+        type: 'tool_result',
+        agent: description,
+        result: content.length > 200 ? content.slice(0, 200) + '...' : content,
+        isError: result.isError,
+      })
       toolResults.push(result)
     }
 

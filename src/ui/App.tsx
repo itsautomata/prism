@@ -10,11 +10,14 @@ import { query } from '../query/engine.js'
 import { buildSystemPrompt } from '../prompts/system.js'
 import { toolToSchema } from '../tools/Tool.js'
 import { loadProfile, addRule, removeRule, setMaxTools, type ModelProfile } from '../learning/profile.js'
-import { classifyTask } from '../routing/classifier.js'
 import { scanProject } from '../context/scanner.js'
-import type { ProjectContext } from '../context/types.js'
 import { saveSession } from '../sessions/store.js'
 import type { Session } from '../sessions/types.js'
+import { OllamaProvider } from '../providers/ollama.js'
+import { OpenRouterProvider } from '../providers/openrouter.js'
+import { loadConfig } from '../config/config.js'
+import { configureAgentTool } from '../tools/agent.js'
+import type { AgentProgressEvent } from '../agents/runner.js'
 import type { ProviderBridge, Message, ModelCapabilities } from '../types/index.js'
 import type { Tool } from '../tools/Tool.js'
 
@@ -27,7 +30,10 @@ interface AppProps {
   initialMessages?: Message[]
 }
 
-export function App({ provider, model, tools, capabilities: initCaps, session, initialMessages }: AppProps) {
+export function App({ provider: initProvider, model: initModel, tools, capabilities: initCaps, session, initialMessages }: AppProps) {
+  const [provider, setProvider] = useState<ProviderBridge>(initProvider)
+  const [model, setModel] = useState(initModel)
+  const [caps, setCaps] = useState(initCaps)
   const { exit } = useApp()
   const [displayMessages, setDisplayMessages] = useState<DisplayMessage[]>(() => {
     // rebuild display messages from resumed session
@@ -69,30 +75,54 @@ export function App({ provider, model, tools, capabilities: initCaps, session, i
   // scan project once on mount
   const [projectContext] = useState(() => scanProject(process.cwd()))
 
+  // wire agent progress to display
+  useState(() => {
+    configureAgentTool(provider, model, tools, (event: AgentProgressEvent) => {
+      switch (event.type) {
+        case 'thinking':
+          setDisplayMessages(prev => {
+            const last = prev[prev.length - 1]
+            if (last?.role === 'tool_result' && last.text.startsWith(`[${event.agent}] `)) {
+              return [...prev.slice(0, -1), { ...last, text: `[${event.agent}] ${event.text}` }]
+            }
+            return [...prev, { role: 'tool_result' as const, text: `[${event.agent}] ${event.text}`, isError: false }]
+          })
+          break
+        case 'tool_call':
+          setDisplayMessages(prev => [
+            ...prev,
+            { role: 'tool_call' as const, text: '', toolName: `${event.agent} → ${event.tool}` },
+          ])
+          break
+        case 'tool_result':
+          setDisplayMessages(prev => [
+            ...prev,
+            { role: 'tool_result' as const, text: `[${event.agent}] ${event.result}`, isError: event.isError },
+          ])
+          break
+      }
+    })
+  })
+
   // persistent conversation (loaded from session on resume)
   const [messages] = useState<Message[]>(() => initialMessages ? [...initialMessages] : [])
 
   const toolSchemas = tools.map(t => toolToSchema(t))
 
-  const getCapabilities = useCallback((): ModelCapabilities => ({
-    ...initCaps,
-    ...(profile.maxToolsOverride ? { maxTools: profile.maxToolsOverride } : {}),
-    ...(profile.toolAccuracyOverride ? { toolAccuracy: profile.toolAccuracyOverride } : {}),
-  }), [initCaps, profile])
-
-  const getSystemPrompt = useCallback((userInput?: string) => {
-    const caps = getCapabilities()
-    // only classify tasks for weak models
-    const taskType = (userInput && caps.toolAccuracy <= 0.7) ? classifyTask(userInput).type : undefined
+  const getSystemPrompt = useCallback(() => {
+    const currentCaps: ModelCapabilities = {
+      ...caps,
+      ...(profile.maxToolsOverride ? { maxTools: profile.maxToolsOverride } : {}),
+      ...(profile.toolAccuracyOverride ? { toolAccuracy: profile.toolAccuracyOverride } : {}),
+    }
     return buildSystemPrompt({
-      capabilities: getCapabilities(),
+      capabilities: currentCaps,
       tools: toolSchemas,
       cwd: process.cwd(),
       profile,
       projectContext,
-      taskType,
     })
-  }, [getCapabilities, toolSchemas, profile])
+  }, [caps, toolSchemas, profile])
 
   // abort controller for interrupting the current operation
   const [abortController, setAbortController] = useState<AbortController | null>(null)
@@ -115,7 +145,31 @@ export function App({ provider, model, tools, capabilities: initCaps, session, i
   const handleSubmit = useCallback(async (input: string) => {
     // slash commands
     if (input.startsWith('/')) {
-      const handled = handleSlashCommand(input, model, profile, setProfile, setDisplayMessages, exit)
+      const switchModelFn = async (newModel: string) => {
+        const config = loadConfig()
+        const isOpenRouter = newModel.includes('/')
+        let newProvider: ProviderBridge
+
+        if (isOpenRouter) {
+          const or = new OpenRouterProvider()
+          await or.connect({ model: newModel, apiKey: config.openrouter.api_key })
+          newProvider = or
+        } else {
+          const ollama = new OllamaProvider()
+          await ollama.connect({ model: newModel, baseUrl: config.ollama.base_url })
+          newProvider = ollama
+        }
+
+        setProvider(newProvider)
+        setModel(newModel)
+        setCaps(newProvider.getCapabilities())
+        session.model = newModel
+        session.provider = newProvider.name
+        saveSession(session)
+        setDisplayMessages(prev => [...prev, { role: 'tool_result', text: `switched to ${newModel}`, isError: false }])
+      }
+
+      const handled = handleSlashCommand(input, model, profile, setProfile, setDisplayMessages, exit, switchModelFn)
       if (handled) return
     }
 
@@ -148,7 +202,7 @@ export function App({ provider, model, tools, capabilities: initCaps, session, i
       for await (const event of query({
         provider,
         model,
-        systemPrompt: getSystemPrompt(input),
+        systemPrompt: getSystemPrompt(),
         tools,
         messages,
         maxTurns: 5,
@@ -234,8 +288,6 @@ export function App({ provider, model, tools, capabilities: initCaps, session, i
     setIsLoading(false)
   }, [provider, model, tools, messages, getSystemPrompt])
 
-  const caps = getCapabilities()
-
   return (
     <Box flexDirection="column" padding={1}>
       <Banner
@@ -278,6 +330,7 @@ function handleSlashCommand(
   setProfile: (p: ModelProfile) => void,
   setMessages: React.Dispatch<React.SetStateAction<DisplayMessage[]>>,
   exit: () => void,
+  switchModel?: (newModel: string) => Promise<void>,
 ): boolean {
   const parts = input.split(' ')
   const cmd = parts[0]
@@ -334,9 +387,18 @@ function handleSlashCommand(
       }
       return true
 
+    case '/model':
+      if (!args) {
+        info(`current model: ${model}\nusage: /model <name> (e.g. /model qwen3:14b, /model deepseek/deepseek-r1)`)
+      } else if (switchModel) {
+        switchModel(args).catch(e => info(`failed: ${(e as Error).message}`))
+      }
+      return true
+
     case '/help':
       info([
         'commands:',
+        '  /model <name>     switch model (keeps conversation)',
         '  /teach <rule>     teach the model a rule (persisted)',
         '  /rules            show learned rules',
         '  /forget <n>       forget rule n',
