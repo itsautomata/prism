@@ -191,19 +191,35 @@ export async function* query(options: QueryOptions): AsyncGenerator<QueryEvent> 
         ],
       })
     } else if (hasErrors) {
-      messages.push({
-        role: 'user',
-        content: [
-          ...toolResults,
-          { type: 'text' as const, text: `the command failed. diagnose before acting:
-1. list the possible causes, most likely first.
-2. tell the user what you think went wrong and why.
-3. decide:
-   - if the command itself was wrong (bad path, bad args, typo): fix the command.
-   - if the command was right but something is missing (package, file, service): fix what is missing, then run the same command again.
-   - if the approach is wrong: try a different approach entirely.` },
-        ],
-      })
+      // RECOVERY STATE: force diagnosis before retry
+      // step 1: send error results + diagnosis prompt with NO tools
+      //         model MUST respond with text analysis (can't call tools)
+      messages.push({ role: 'user', content: toolResults })
+
+      for await (const event of provider.streamMessage({
+        model,
+        messages,
+        system: `a tool just failed. you must diagnose the error before doing anything else. explain:
+1. what you think went wrong, most likely cause first.
+2. what you will do differently.
+respond with text only. do not call any tools yet.`,
+        tools: [], // no tools available — forces text response
+        signal,
+      })) {
+        if (event.type === 'text_delta') {
+          yield { type: 'text', text: event.text }
+        }
+        collectContentBlock(event, assistantContent)
+      }
+
+      // add the diagnosis to conversation
+      if (assistantContent.length > 0) {
+        messages.push({ role: 'assistant', content: [...assistantContent] })
+        assistantContent.length = 0
+      }
+
+      // step 2: now the model has diagnosed. continue the loop with tools restored.
+      // the model's next turn will have tools and can act on its diagnosis.
     } else {
       messages.push({ role: 'user', content: toolResults })
     }
