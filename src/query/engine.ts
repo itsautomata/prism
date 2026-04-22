@@ -19,9 +19,14 @@ import type {
 import type { Tool, ToolContext } from '../tools/Tool.js'
 import { toolToSchema } from '../tools/Tool.js'
 import { runToolCalls, findTool, type PermissionResolver } from '../tools/orchestration.js'
+import { countConversationTokens, formatTokens } from '../compact/tokens.js'
+import { trimOldToolResults } from '../compact/trimmer.js'
+import { snipOldTurns } from '../compact/snip.js'
+import { summarizeOldTurns } from '../compact/summarize.js'
 
 export type QueryEvent =
   | { type: 'text'; text: string }
+  | { type: 'token_update'; used: number; max: number; formatted: string }
   | { type: 'tool_start'; name: string; id: string }
   | { type: 'tool_end'; name: string; id: string; result: string; isError?: boolean }
   | { type: 'thinking'; text: string }
@@ -77,6 +82,20 @@ export async function* query(options: QueryOptions): AsyncGenerator<QueryEvent> 
     if (turnCount >= maxTurns) {
       yield { type: 'done', reason: 'max_turns', turnCount }
       return
+    }
+
+    // compression pipeline: trim → snip → summarize
+    messages.splice(0, messages.length, ...trimOldToolResults(messages))
+
+    const tokenCount = countConversationTokens(messages)
+    yield { type: 'token_update', used: tokenCount, max: capabilities.maxContextTokens, formatted: `${formatTokens(tokenCount)} / ${formatTokens(capabilities.maxContextTokens)}` }
+
+    if (tokenCount > capabilities.maxContextTokens * 0.8) {
+      const compressed = await summarizeOldTurns(messages, provider, model)
+      messages.splice(0, messages.length, ...compressed)
+    } else if (tokenCount > capabilities.maxContextTokens * 0.6) {
+      const snipped = snipOldTurns(messages)
+      messages.splice(0, messages.length, ...snipped)
     }
 
     // call model
