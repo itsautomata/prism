@@ -51,11 +51,10 @@ you are finding things in the codebase. be efficient.
 
 the user is talking, not requesting an action.
 
-- respond with text only. do NOT use any tools.
-- be natural and direct
+- respond naturally and directly
 - if the user is greeting you, greet back
 - if the user asks a knowledge question, answer from what you know
-- only suggest using tools if the user explicitly asks for an action`,
+- you still have access to tools if the conversation turns into a task`,
 
   simple: `# task mode: simple
 
