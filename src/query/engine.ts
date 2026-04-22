@@ -191,7 +191,7 @@ export async function* query(options: QueryOptions): AsyncGenerator<QueryEvent> 
           { type: 'text' as const, text: `the search returned no results. try a different pattern, path, or tool.` },
         ],
       })
-    } else if (hasErrors) {
+    } else if (hasErrors && !signal?.aborted) {
       const errorDetails = toolResults
         .filter(r => r.isError)
         .map(r => typeof r.content === 'string' ? r.content : JSON.stringify(r.content))
