@@ -36,6 +36,7 @@ const MODEL_PROFILES: Record<string, Partial<ModelCapabilities>> = {
   'openai/gpt-4.1-nano': { maxTools: 10, toolAccuracy: 0.78, maxContextTokens: 128_000 },
   'openai/gpt-4.1-mini': { maxTools: 12, toolAccuracy: 0.82, maxContextTokens: 128_000 },
   // mid range
+  'qwen/qwen3.6-plus': { maxTools: 15, toolAccuracy: 0.85, maxContextTokens: 1_000_000 },
   'anthropic/claude-haiku-4.5': { maxTools: 15, toolAccuracy: 0.9, maxContextTokens: 200_000 },
   'openai/gpt-4o': { maxTools: 15, toolAccuracy: 0.88, maxContextTokens: 128_000 },
   'anthropic/claude-sonnet-4': { maxTools: 20, toolAccuracy: 0.95, maxContextTokens: 200_000 },
