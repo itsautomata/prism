@@ -176,8 +176,21 @@ export async function* query(options: QueryOptions): AsyncGenerator<QueryEvent> 
 
     // append tool results as user message
     const hasErrors = toolResults.some(r => r.isError)
+    const hasEmptyResults = toolResults.some(r => {
+      if (r.isError) return false
+      const content = typeof r.content === 'string' ? r.content : ''
+      return content.includes('no files matching') || content.includes('no matches for') || content === '(no output)'
+    })
 
-    if (hasErrors) {
+    if (hasEmptyResults && !hasErrors) {
+      messages.push({
+        role: 'user',
+        content: [
+          ...toolResults,
+          { type: 'text' as const, text: `the search returned no results. try a different pattern, path, or tool.` },
+        ],
+      })
+    } else if (hasErrors) {
       messages.push({
         role: 'user',
         content: [
