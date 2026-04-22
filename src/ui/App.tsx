@@ -31,13 +31,24 @@ export function App({ provider, model, tools, capabilities: initCaps, session, i
   const { exit } = useApp()
   const [displayMessages, setDisplayMessages] = useState<DisplayMessage[]>(() => {
     // rebuild display messages from resumed session
+    // filter out internal messages (error reasoning, interrupt signals, summaries)
     if (!initialMessages || initialMessages.length === 0) return []
     const display: DisplayMessage[] = []
+    const internalPrefixes = [
+      'the command failed.',
+      'the user interrupted',
+      '[session summary]',
+      '[earlier conversation was compressed',
+    ]
     for (const msg of initialMessages) {
       for (const block of msg.content) {
-        if (msg.role === 'user' && block.type === 'text') {
+        if (block.type !== 'text') continue
+        const isInternal = internalPrefixes.some(p => block.text.startsWith(p))
+        if (isInternal) continue
+
+        if (msg.role === 'user') {
           display.push({ role: 'user', text: block.text })
-        } else if (msg.role === 'assistant' && block.type === 'text') {
+        } else if (msg.role === 'assistant') {
           display.push({ role: 'assistant', text: block.text })
         }
       }
