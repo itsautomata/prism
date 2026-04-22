@@ -16,7 +16,7 @@ requires Ollama v0.20.2+ for proper tool calling.
 ```bash
 brew install ollama
 ollama serve
-ollama pull gemma4:e4b
+ollama pull deepseek-r1:14b
 
 cd prism
 npm install
@@ -30,10 +30,9 @@ prism
 ### local (free, ollama)
 
 ```bash
-prism                       # gemma4:e4b (default, not recommended)
-prism qwen3:14b             # recommended: best balance
+prism                       # deepseek-r1:14b (default)
+prism qwen3:14b             # best balance
 prism qwen2.5-coder:7b      # fast, light, good tool use
-prism deepseek-r1:14b       # strong reasoning
 ```
 
 ### cloud (openrouter, 200+ models)
