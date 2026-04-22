@@ -179,7 +179,7 @@ export async function* query(options: QueryOptions): AsyncGenerator<QueryEvent> 
     const hasEmptyResults = toolResults.some(r => {
       if (r.isError) return false
       const content = typeof r.content === 'string' ? r.content : ''
-      return content.includes('no files matching') || content.includes('no matches for') || content === '(no output)'
+      return content.includes('no files matching') || content.includes('no matches for')
     })
 
     if (hasEmptyResults && !hasErrors) {
@@ -194,16 +194,19 @@ export async function* query(options: QueryOptions): AsyncGenerator<QueryEvent> 
       // RECOVERY STATE: force diagnosis before retry
       // step 1: send error results + diagnosis prompt with NO tools
       //         model MUST respond with text analysis (can't call tools)
-      messages.push({ role: 'user', content: toolResults })
+      messages.push({
+        role: 'user',
+        content: [
+          ...toolResults,
+          { type: 'text' as const, text: `the previous tool returned a non-zero exit code. briefly: was this expected (e.g. verifying a file was deleted) or unexpected? if expected, continue with the task. if unexpected, explain the cause and try a different approach.` },
+        ],
+      })
 
       for await (const event of provider.streamMessage({
         model,
         messages,
-        system: `a tool just failed. you must diagnose the error before doing anything else. explain:
-1. what you think went wrong, most likely cause first.
-2. what you will do differently.
-respond with text only. do not call any tools yet.`,
-        tools: [], // no tools available — forces text response
+        system: systemPrompt, // keep prism's identity
+        tools: [], // no tools — forces text response
         signal,
       })) {
         if (event.type === 'text_delta') {
