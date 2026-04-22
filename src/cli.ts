@@ -29,6 +29,44 @@ async function main() {
   const config = loadConfig()
   const args = process.argv.slice(2)
 
+  // known flags
+  const KNOWN_FLAGS = new Set([
+    '--openrouter', '--or',
+    '--continue', '-c',
+    '--config',
+    '--sessions',
+    '--help', '-h',
+  ])
+
+  // help
+  if (args.includes('--help') || args.includes('-h')) {
+    console.log(`\x1b[38;2;0;255;136mprism\x1b[0m: free, local-first AI assistant
+
+\x1b[38;2;0;255;136musage:\x1b[0m
+  prism [model] [flags]
+
+\x1b[38;2;0;255;136mmodels:\x1b[0m
+  prism                               default model (from config)
+  prism qwen3:14b                     specify local model
+  prism --or deepseek/deepseek-r1     openrouter model
+
+\x1b[38;2;0;255;136mflags:\x1b[0m
+  --or, --openrouter    use OpenRouter provider
+  -c, --continue        resume last session in this directory
+  --config              show config file path
+  --sessions            list recent sessions
+  -h, --help            show this help`)
+    process.exit(0)
+  }
+
+  // validate flags: catch typos
+  const unknownFlags = args.filter(a => a.startsWith('-') && !KNOWN_FLAGS.has(a))
+  if (unknownFlags.length > 0) {
+    console.error(`\x1b[31munknown flag: ${unknownFlags[0]}\x1b[0m`)
+    console.error(`run \x1b[38;2;0;255;136mprism --help\x1b[0m or \x1b[38;2;0;255;136m-h\x1b[0m for usage.`)
+    process.exit(1)
+  }
+
   // --config: show config path
   if (args.includes('--config')) {
     console.log(getConfigPath())
@@ -52,7 +90,7 @@ async function main() {
 
   let useOpenRouter = args.includes('--openrouter') || args.includes('--or')
   const shouldContinue = args.includes('--continue') || args.includes('-c')
-  const modelArgs = args.filter(a => !a.startsWith('--') && a !== '-c')
+  const modelArgs = args.filter(a => !a.startsWith('-'))
 
   let provider: ProviderBridge
   let model: string
