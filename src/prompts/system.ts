@@ -7,8 +7,6 @@
 import type { ModelCapabilities, ToolSchema } from '../types/index.js'
 import type { ModelProfile } from '../learning/profile.js'
 import { rulesToPrompt } from '../learning/profile.js'
-import type { TaskType } from '../routing/classifier.js'
-import { getTaskProfile } from '../routing/profiles.js'
 import type { ProjectContext } from '../context/types.js'
 import { formatContext } from '../context/inject.js'
 
@@ -17,12 +15,11 @@ interface PromptOptions {
   tools: ToolSchema[]
   cwd: string
   profile?: ModelProfile
-  taskType?: TaskType
   projectContext?: ProjectContext
 }
 
 export function buildSystemPrompt(options: PromptOptions): string {
-  const { capabilities, tools, cwd, profile, taskType, projectContext } = options
+  const { capabilities, tools, cwd, profile, projectContext } = options
 
   const sections = [
     getCore(),
@@ -32,11 +29,6 @@ export function buildSystemPrompt(options: PromptOptions): string {
 
   if (projectContext) {
     sections.push(formatContext(projectContext))
-  }
-
-  // only inject task profiles for weak models (<= 70% tool accuracy)
-  if (taskType && capabilities.toolAccuracy <= 0.7) {
-    sections.push(getTaskProfile(taskType))
   }
 
   if (profile) {
