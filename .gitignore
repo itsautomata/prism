@@ -3,3 +3,4 @@ dist/
 local_docs/
 *.egg-info/
 .DS_Store
+projects/
