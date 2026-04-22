@@ -23,7 +23,7 @@ export interface PrismConfig {
 
 const DEFAULTS: PrismConfig = {
   default_provider: 'ollama',
-  default_model: 'gemma4:e4b',
+  default_model: 'deepseek-r1:14b',
   openrouter: { api_key: '' },
   anthropic: { api_key: '' },
   openai: { api_key: '' },
@@ -79,7 +79,7 @@ export function initConfig(): void {
 # env vars override these values.
 
 default_provider = "ollama"
-default_model = "gemma4:e4b"
+default_model = "deepseek-r1:14b"
 
 [openrouter]
 api_key = ""

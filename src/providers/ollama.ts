@@ -90,7 +90,7 @@ interface OllamaStreamChunk {
 export class OllamaProvider implements ProviderBridge {
   name = 'ollama'
   private baseUrl = 'http://localhost:11434'
-  private model = 'gemma4:e4b'
+  private model = 'deepseek-r1:14b'
   private capabilities: ModelCapabilities = { ...DEFAULT_CAPABILITIES }
 
   async connect(config: ProviderConfig): Promise<void> {
