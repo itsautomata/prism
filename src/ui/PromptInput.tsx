@@ -1,5 +1,5 @@
-import React, { useState } from 'react'
-import { Box, Text, useInput } from 'ink'
+import React, { useState, memo } from 'react'
+import { Box, Text } from 'ink'
 import TextInput from 'ink-text-input'
 import { theme } from './theme.js'
 
@@ -8,7 +8,7 @@ interface PromptInputProps {
   isLoading: boolean
 }
 
-export function PromptInput({ onSubmit, isLoading }: PromptInputProps) {
+export const PromptInput = memo(function PromptInput({ onSubmit, isLoading }: PromptInputProps) {
   const [value, setValue] = useState('')
 
   if (isLoading) {
@@ -41,4 +41,4 @@ export function PromptInput({ onSubmit, isLoading }: PromptInputProps) {
       />
     </Box>
   )
-}
+})

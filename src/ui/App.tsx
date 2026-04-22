@@ -247,13 +247,13 @@ export function App({ provider: initProvider, model: initModel, tools, capabilit
             break
 
           case 'done':
-            setTurnCount(event.turnCount)
-            // mark streaming as done
-            setDisplayMessages(prev => {
-              return prev.map(m =>
+            // batch these to reduce re-renders
+            setTimeout(() => {
+              setTurnCount(event.turnCount)
+              setDisplayMessages(prev => prev.map(m =>
                 m.isStreaming ? { ...m, isStreaming: false } : m
-              )
-            })
+              ))
+            }, 0)
             break
 
           case 'error':
@@ -286,8 +286,12 @@ export function App({ provider: initProvider, model: initModel, tools, capabilit
     session.messages = messages
     saveSession(session)
 
-    setAbortController(null)
-    setIsLoading(false)
+    // defer cleanup state updates to avoid re-render storm
+    // while user starts typing the next message
+    setTimeout(() => {
+      setAbortController(null)
+      setIsLoading(false)
+    }, 0)
   }, [provider, model, tools, messages, getSystemPrompt])
 
   return (
