@@ -129,16 +129,18 @@ export function App({ provider: initProvider, model: initModel, tools, capabilit
 
   // handle keyboard: escape interrupts, ctrl+c exits
   useInput((input, key) => {
-    if (key.escape && abortController && isLoading) {
+    if (!isLoading && key.ctrl && input === 'c') {
+      exit()
+      return
+    }
+    if (!isLoading) return // don't intercept keystrokes while user is typing
+
+    if (key.escape && abortController) {
       abortController.abort()
       setDisplayMessages(prev => [
         ...prev,
         { role: 'tool_result', text: 'interrupted by user', isError: false },
       ])
-    }
-    if (key.ctrl && input === 'c') {
-      if (abortController) abortController.abort()
-      exit()
     }
   })
 
