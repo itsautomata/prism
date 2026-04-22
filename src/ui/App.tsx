@@ -81,7 +81,9 @@ export function App({ provider, model, tools, capabilities: initCaps, session, i
   }), [initCaps, profile])
 
   const getSystemPrompt = useCallback((userInput?: string) => {
-    const taskType = userInput ? classifyTask(userInput).type : undefined
+    const caps = getCapabilities()
+    // only classify tasks for weak models
+    const taskType = (userInput && caps.toolAccuracy <= 0.7) ? classifyTask(userInput).type : undefined
     return buildSystemPrompt({
       capabilities: getCapabilities(),
       tools: toolSchemas,

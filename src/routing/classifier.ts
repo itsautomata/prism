@@ -57,7 +57,6 @@ const CONVERSATION_PATTERNS = [
   /^(?:how are you|what's up|good morning|good night)\b/i,
   /^(?:what is|what are|define|tell me about)\b(?!.*\b(?:file|code|function|error)\b)/i,
   /^(?:can you|do you|are you)\b/i,
-  /\?$/, // ends with question mark and no code/file indicators
 ]
 
 /**

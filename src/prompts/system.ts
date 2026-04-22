@@ -34,7 +34,8 @@ export function buildSystemPrompt(options: PromptOptions): string {
     sections.push(formatContext(projectContext))
   }
 
-  if (taskType) {
+  // only inject task profiles for weak models (<= 70% tool accuracy)
+  if (taskType && capabilities.toolAccuracy <= 0.7) {
     sections.push(getTaskProfile(taskType))
   }
 
