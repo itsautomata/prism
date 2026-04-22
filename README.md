@@ -121,6 +121,15 @@ this project uses pydantic v2.
 /exit             quit
 ```
 
+## output tokens
+
+default: 10,000 tokens per response. adjust if needed:
+
+```bash
+prism --max-tokens 16000      # more for heavy analysis
+prism --max-tokens 4000       # less for quick tasks
+```
+
 ## note
 
 different models have different strengths. tool calling, reasoning.. quality varies. some will outperform others while others will do very badly.
