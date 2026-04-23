@@ -31,6 +31,8 @@ export interface GitInfo {
   clean: boolean
   recentCommits: string[]
   remote: string | null
+  statusLines: string[]
+  diffStat: string | null
 }
 
 export interface DepsInfo {

@@ -306,6 +306,7 @@ function detectGit(cwd: string): GitInfo | null {
     const branch = exec(cwd, 'git branch --show-current').trim()
     const status = exec(cwd, 'git status --porcelain')
     const clean = status.trim() === ''
+    const statusLines = status.trim().split('\n').filter(Boolean).slice(0, 10)
     const log = exec(cwd, 'git log --oneline -5 2>/dev/null')
     const recentCommits = log.trim().split('\n').filter(Boolean)
 
@@ -314,7 +315,15 @@ function detectGit(cwd: string): GitInfo | null {
       remote = exec(cwd, 'git remote get-url origin 2>/dev/null').trim() || null
     } catch {}
 
-    return { branch, clean, recentCommits, remote }
+    let diffStat: string | null = null
+    if (!clean) {
+      try {
+        const stat = exec(cwd, 'git diff --stat 2>/dev/null').trim()
+        if (stat) diffStat = stat.split('\n').pop()?.trim() || null
+      } catch {}
+    }
+
+    return { branch, clean, recentCommits, remote, statusLines, diffStat }
   } catch {
     return null
   }
