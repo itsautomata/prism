@@ -29,6 +29,9 @@ export function buildSystemPrompt(options: PromptOptions): string {
 
   if (projectContext) {
     sections.push(formatContext(projectContext))
+    if (projectContext.git) {
+      sections.push(getGitGuidance())
+    }
   }
 
   if (profile) {
@@ -85,6 +88,14 @@ function getTools(tools: ToolSchema[], capabilities: ModelCapabilities): string 
 ${toolList}
 
 Use the right tool: Read over cat, Edit over sed, Grep over grep, Glob over find.`
+}
+
+function getGitGuidance(): string {
+  return `# git
+- The repo's git state is in your context above (branch, status, recent commits).
+- For live info (diffs, blame, log), use Bash with git commands.
+- Before committing, always show the user what will be committed.
+- Never force-push or reset --hard without explicit permission.`
 }
 
 function getEnvironment(cwd: string): string {
