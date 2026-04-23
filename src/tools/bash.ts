@@ -15,6 +15,7 @@ const SAFE_COMMANDS = new Set([
   'ls', 'cat', 'head', 'tail', 'wc', 'find', 'grep', 'rg',
   'which', 'whereis', 'file', 'stat', 'du', 'df',
   'git status', 'git log', 'git diff', 'git branch', 'git show',
+  'git blame', 'git stash list', 'git remote', 'git rev-parse',
   'echo', 'printf', 'date', 'pwd', 'whoami', 'uname',
   'node --version', 'python3 --version', 'npm --version',
 ])
