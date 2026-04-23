@@ -127,7 +127,7 @@ export class OpenRouterProvider implements ProviderBridge {
       headers: {
         'Authorization': `Bearer ${this.apiKey}`,
         'Content-Type': 'application/json',
-        'HTTP-Referer': 'https://github.com/automata/prism',
+        'HTTP-Referer': 'https://github.com/itsautomata/prism',
         'X-Title': 'Prism',
       },
       body: JSON.stringify(body),
@@ -245,7 +245,7 @@ export class OpenRouterProvider implements ProviderBridge {
       headers: {
         'Authorization': `Bearer ${this.apiKey}`,
         'Content-Type': 'application/json',
-        'HTTP-Referer': 'https://github.com/automata/prism',
+        'HTTP-Referer': 'https://github.com/itsautomata/prism',
         'X-Title': 'Prism',
       },
       body: JSON.stringify(body),
