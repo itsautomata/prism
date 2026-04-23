@@ -26,10 +26,28 @@ export function formatContext(ctx: ProjectContext): string {
   // git
   if (ctx.git) {
     const { git } = ctx
-    const status = git.clean ? 'clean' : 'uncommitted changes'
-    lines.push(`branch: ${git.branch} (${status})`)
-    if (git.recentCommits.length > 0) {
-      lines.push(`last: ${git.recentCommits[0]}`)
+    if (git.clean) {
+      lines.push(`branch: ${git.branch} (clean)`)
+      if (git.recentCommits.length > 0) {
+        lines.push(`last: ${git.recentCommits[0]}`)
+      }
+    } else {
+      lines.push(`branch: ${git.branch} (${git.statusLines.length} uncommitted change${git.statusLines.length !== 1 ? 's' : ''})`)
+      if (git.statusLines.length > 0) {
+        lines.push('status:')
+        for (const line of git.statusLines) {
+          lines.push(line)
+        }
+      }
+      if (git.recentCommits.length > 0) {
+        lines.push(`recent commits:`)
+        for (const c of git.recentCommits.slice(0, 3)) {
+          lines.push(c)
+        }
+      }
+      if (git.diffStat) {
+        lines.push(`diff: ${git.diffStat}`)
+      }
     }
   }
 
