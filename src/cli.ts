@@ -63,14 +63,33 @@ async function main() {
 
   // parse --max-tokens value
   const maxTokensIdx = args.indexOf('--max-tokens')
-  const maxTokens = maxTokensIdx !== -1 && args[maxTokensIdx + 1]
-    ? parseInt(args[maxTokensIdx + 1]!, 10)
-    : undefined
+  let maxTokens: number | undefined
+  if (maxTokensIdx !== -1) {
+    const raw = args[maxTokensIdx + 1]
+    if (!raw || raw.startsWith('-')) {
+      console.error(`\x1b[31m--max-tokens requires a number (e.g. --max-tokens 10000)\x1b[0m`)
+      process.exit(1)
+    }
+    const parsed = parseInt(raw, 10)
+    if (isNaN(parsed) || parsed <= 0) {
+      console.error(`\x1b[31m--max-tokens must be a positive number, got: ${raw}\x1b[0m`)
+      process.exit(1)
+    }
+    maxTokens = parsed
+  }
 
   // validate flags: catch typos (skip the value after --max-tokens)
   const unknownFlags = args.filter((a, i) => a.startsWith('-') && !KNOWN_FLAGS.has(a) && !(i > 0 && args[i - 1] === '--max-tokens'))
   if (unknownFlags.length > 0) {
     console.error(`\x1b[31munknown flag: ${unknownFlags[0]}\x1b[0m`)
+    console.error(`run \x1b[38;2;0;255;136mprism --help\x1b[0m or \x1b[38;2;0;255;136m-h\x1b[0m for usage.`)
+    process.exit(1)
+  }
+
+  // validate positional args: at most one model name
+  const modelArgs = args.filter((a, i) => !a.startsWith('-') && !(i > 0 && args[i - 1] === '--max-tokens'))
+  if (modelArgs.length > 1) {
+    console.error(`\x1b[31mtoo many arguments: ${modelArgs.join(', ')}\x1b[0m`)
     console.error(`run \x1b[38;2;0;255;136mprism --help\x1b[0m or \x1b[38;2;0;255;136m-h\x1b[0m for usage.`)
     process.exit(1)
   }
@@ -98,7 +117,6 @@ async function main() {
 
   let useOpenRouter = args.includes('--openrouter') || args.includes('--or')
   const shouldContinue = args.includes('--continue') || args.includes('-c')
-  const modelArgs = args.filter((a, i) => !a.startsWith('-') && !(i > 0 && args[i - 1] === '--max-tokens'))
 
   let provider: ProviderBridge
   let model: string
