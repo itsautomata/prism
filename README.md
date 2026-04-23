@@ -45,7 +45,7 @@ prism --or google/gemini-2.0-flash-lite-001   # $0.075/M
 prism --or anthropic/claude-haiku-4.5         # $1.00/M tokens
 ```
 
-see [openrouter.ai/docs](https://openrouter.ai/docs) for all available models and rate limits.
+the model must support tool calling on openrouter. see [openrouter.ai/docs](https://openrouter.ai/docs) for available models.
 
 ### sessions
 
