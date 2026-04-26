@@ -15,6 +15,7 @@ import type { Session } from '../sessions/types.js'
 import { configureAgentTool } from '../tools/agent.js'
 import type { AgentProgressEvent } from '../agents/runner.js'
 import { handleSlashCommand } from './commands.js'
+import { handleBashCommand } from './bash.js'
 import { switchModel } from './useModelSwitch.js'
 import type { ProviderBridge, Message, ModelCapabilities } from '../types/index.js'
 import type { Tool } from '../tools/Tool.js'
@@ -110,6 +111,10 @@ export function App({ provider: initProvider, model: initModel, tools, capabilit
   })
 
   const handleSubmit = useCallback(async (input: string) => {
+    if (input.startsWith('!')) {
+      if (handleBashCommand(input, setDisplayMessages)) return
+    }
+
     if (input.startsWith('/')) {
       const switchFn = (newModel: string) => switchModel(newModel, session, setProvider, setModel, setCaps, setDisplayMessages)
       const handled = handleSlashCommand(input, model, profile, setProfile, setDisplayMessages, exit, switchFn)

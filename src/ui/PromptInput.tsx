@@ -50,15 +50,15 @@ export const PromptInput = memo(function PromptInput({ onSubmit, isLoading }: Pr
       return
     }
 
-    // ctrl+u: clear line
-    if (key.ctrl && input === 'u') {
+    // ctrl+u OR esc: clear line (esc also exits shell mode by removing the `!`)
+    if ((key.ctrl && input === 'u') || key.escape) {
       bufferRef.current = ''
       setDisplay('')
       return
     }
 
-    // ignore control sequences (arrows, escape, etc)
-    if (key.ctrl || key.meta || key.escape || key.upArrow || key.downArrow || key.leftArrow || key.rightArrow || key.tab) {
+    // ignore other control sequences (arrows, etc)
+    if (key.ctrl || key.meta || key.upArrow || key.downArrow || key.leftArrow || key.rightArrow || key.tab) {
       return
     }
 
@@ -81,10 +81,24 @@ export const PromptInput = memo(function PromptInput({ onSubmit, isLoading }: Pr
     )
   }
 
+  const isShell = display.startsWith('!')
+  const promptChar = isShell ? '$' : '◆'
+  const accent = isShell ? theme.warning : theme.prompt
+  const visible = isShell ? display.slice(1) : display
+
   return (
-    <Box marginTop={1}>
-      <Text color={theme.prompt}>◆ </Text>
-      <Text wrap="wrap">{display}<Text color={theme.primary}>▎</Text>{!display && <Text color={theme.textMuted}> ask anything...</Text>}</Text>
+    <Box marginTop={1} flexDirection="column">
+      {isShell && (
+        <Text color={theme.textMuted}>  shell mode (delete the `!` to exit, or esc to clear. output stays here, the model won't see it)</Text>
+      )}
+      <Box>
+        <Text color={accent}>{promptChar} </Text>
+        <Text wrap="wrap" color={isShell ? theme.warning : undefined}>
+          {visible}
+          <Text color={accent}>▎</Text>
+          {!display && <Text color={theme.textMuted}> ask anything...</Text>}
+        </Text>
+      </Box>
     </Box>
   )
 })
