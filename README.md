@@ -167,6 +167,7 @@ the prompt switches to amber `$` when you type `!`, signaling shell mode. press 
 
 useful for: checking state mid-conversation (git status, file existence, processes) without burning model tokens or polluting context.
 
+
 ## output tokens
 
 default: 10,000 tokens per response. adjust if needed:
@@ -174,7 +175,26 @@ default: 10,000 tokens per response. adjust if needed:
 ```bash
 prism --max-tokens 16000      # more for heavy analysis
 prism --max-tokens 4000       # less for quick tasks
+``` 
+
+
+## tests (on going)
+
+```bash
+npm test            # run all tests
+npm run test:watch  # watch mode
 ```
+
+covering:
+
+- CLI parsing
+- sessions and `--resume`
+- shell completion
+- git context detection
+- token counting
+- tools and permissions
+- `!cmd` shell escape
+
 
 ## note
 
