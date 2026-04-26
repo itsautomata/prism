@@ -23,18 +23,16 @@ function sessionPath(id: string): string {
   return join(SESSIONS_DIR, `${id}.json`)
 }
 
-function cwdSlug(cwd: string): string {
-  return cwd.replace(/[^a-zA-Z0-9]/g, '_').replace(/_+/g, '_').slice(-50)
-}
-
 /**
  * create a new session.
+ * id is the iso timestamp with ms (sortable, ~23 chars, collision-proof at 1ms).
+ * cwd is stored as a field, no longer encoded in the id.
  */
 export function createSession(model: string, provider: string, cwd: string): Session {
   ensureDir()
   const now = new Date()
-  const timestamp = now.toISOString().replace(/[:.]/g, '-').slice(0, 19)
-  const id = `${timestamp}_${cwdSlug(cwd)}`
+  // 2026-04-21T18:14:29.123Z -> 2026-04-21T18-14-29-123
+  const id = now.toISOString().replace(/[:.]/g, '-').slice(0, 23)
 
   return {
     id,

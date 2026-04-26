@@ -19,13 +19,28 @@ import { OllamaProvider } from './providers/ollama.js'
 import { OpenRouterProvider } from './providers/openrouter.js'
 import { BashTool, ReadTool, EditTool, WriteTool, GlobTool, GrepTool, AgentTool, configureAgentTool } from './tools/index.js'
 import { loadConfig, initConfig, getConfigPath } from './config/config.js'
-import { createSession, findLastSession, listSessions } from './sessions/store.js'
-import { allFlagTokens, complete } from './completion/spec.js'
+import { createSession, findLastSession, listSessions, loadSession } from './sessions/store.js'
+import { allFlagTokens, complete, valueTakingFlagTokens } from './completion/spec.js'
+import { homedir } from 'os'
 import { emitBash } from './completion/bash.js'
 import { emitZsh } from './completion/zsh.js'
 import { installCompletion, maybeAutoInstall, type SupportedShell } from './completion/install.js'
 import type { ProviderBridge, Message } from './types/index.js'
 import type { Session } from './sessions/types.js'
+
+function shortenPath(cwd: string): string {
+  const home = homedir()
+  let path = cwd.startsWith(home) ? '~' + cwd.slice(home.length) : cwd
+  // ellipsis-middle if still long: keep first segment and last 2
+  if (path.length > 50) {
+    const parts = path.split('/').filter(Boolean)
+    if (parts.length > 4) {
+      const head = path.startsWith('~') ? '~' : '/' + parts[0]
+      path = `${head}/.../${parts.slice(-2).join('/')}`
+    }
+  }
+  return path
+}
 
 async function main() {
   const args = process.argv.slice(2)
@@ -99,6 +114,7 @@ async function main() {
 \x1b[38;2;0;255;136mflags:\x1b[0m
   --or, --openrouter    use OpenRouter provider
   -c, --continue        resume last session in this directory
+  -r, --resume <n|id>   resume the nth recent session, or by full id (see --sessions)
   --max-tokens <n>      max output tokens per response (default: 10000)
   --config              show config file path
   --sessions            list recent sessions
@@ -123,8 +139,12 @@ async function main() {
     maxTokens = parsed
   }
 
-  // validate flags: catch typos (skip the value after --max-tokens)
-  const unknownFlags = args.filter((a, i) => a.startsWith('-') && !KNOWN_FLAGS.has(a) && !(i > 0 && args[i - 1] === '--max-tokens'))
+  // skip the value following any flag that takes a value
+  const valueFlags = valueTakingFlagTokens()
+  const isFlagValue = (i: number) => i > 0 && valueFlags.has(args[i - 1] || '')
+
+  // validate flags: catch typos
+  const unknownFlags = args.filter((a, i) => a.startsWith('-') && !KNOWN_FLAGS.has(a) && !isFlagValue(i))
   if (unknownFlags.length > 0) {
     console.error(`\x1b[31munknown flag: ${unknownFlags[0]}\x1b[0m`)
     console.error(`run \x1b[38;2;0;255;136mprism --help\x1b[0m or \x1b[38;2;0;255;136m-h\x1b[0m for usage.`)
@@ -132,7 +152,7 @@ async function main() {
   }
 
   // validate positional args: at most one model name
-  const modelArgs = args.filter((a, i) => !a.startsWith('-') && !(i > 0 && args[i - 1] === '--max-tokens'))
+  const modelArgs = args.filter((a, i) => !a.startsWith('-') && !isFlagValue(i))
   if (modelArgs.length > 1) {
     console.error(`\x1b[31mtoo many arguments: ${modelArgs.join(', ')}\x1b[0m`)
     console.error(`run \x1b[38;2;0;255;136mprism --help\x1b[0m or \x1b[38;2;0;255;136m-h\x1b[0m for usage.`)
@@ -145,23 +165,37 @@ async function main() {
     process.exit(0)
   }
 
-  // --sessions: list recent sessions
+  // --sessions: list recent sessions (numbered, most recent first)
   if (args.includes('--sessions')) {
-    const sessions = listSessions(10)
+    const sessions = listSessions(20)
     if (sessions.length === 0) {
       console.log('no sessions yet.')
     } else {
-      for (const s of sessions) {
+      console.log(`\x1b[2muse \`prism -r <n>\` for the number, or \`prism -r <id>\` for the full id\x1b[0m\n`)
+      sessions.forEach((s, i) => {
         const turns = s.messages.filter(m => m.role === 'user').length
         const date = s.updatedAt.slice(0, 16).replace('T', ' ')
-        console.log(`${s.id}  ${s.model}  ${turns} turns  ${date}  ${s.cwd}`)
-      }
+        const num = String(i + 1).padStart(2, ' ')
+        console.log(`\x1b[38;2;0;255;136m${num}.\x1b[0m  ${s.model.padEnd(28)} ${String(turns).padStart(3)} turns  ${date}  \x1b[2m${shortenPath(s.cwd)}\x1b[0m`)
+        console.log(`     \x1b[2m${s.id}\x1b[0m`)
+      })
     }
     process.exit(0)
   }
 
   let useOpenRouter = args.includes('--openrouter') || args.includes('--or')
   const shouldContinue = args.includes('--continue') || args.includes('-c')
+
+  // --resume <id>: load a specific session by ID (from `prism --sessions`)
+  let resumeId: string | undefined
+  const resumeIdx = args.indexOf('--resume') !== -1 ? args.indexOf('--resume') : args.indexOf('-r')
+  if (resumeIdx !== -1) {
+    resumeId = args[resumeIdx + 1]
+    if (!resumeId || resumeId.startsWith('-')) {
+      console.error(`\x1b[31m--resume requires a session id (find one with \`prism --sessions\`)\x1b[0m`)
+      process.exit(1)
+    }
+  }
 
   let provider: ProviderBridge
   let model: string
@@ -170,7 +204,33 @@ async function main() {
   const cwd = process.cwd()
 
   // load session first so we can inherit provider/model from it
-  if (shouldContinue) {
+  if (resumeId) {
+    // numeric arg = 1-based index into the recent sessions list
+    let target = null
+    if (/^\d+$/.test(resumeId)) {
+      const idx = parseInt(resumeId, 10) - 1
+      const recent = listSessions(20)
+      if (idx >= 0 && idx < recent.length) {
+        target = recent[idx]
+      }
+    } else {
+      target = loadSession(resumeId)
+    }
+    if (!target) {
+      console.error(`\x1b[31mno session with id or index: ${resumeId}\x1b[0m`)
+      console.error(`list available sessions with \x1b[38;2;0;255;136mprism --sessions\x1b[0m`)
+      process.exit(1)
+    }
+    session = target
+    initialMessages = target.messages
+    if (!args.includes('--openrouter') && !args.includes('--or') && target.provider === 'openrouter') {
+      useOpenRouter = true
+    }
+    if (modelArgs.length === 0) {
+      modelArgs.push(target.model)
+    }
+    console.log(`\x1b[2mresuming session ${target.id} (${target.messages.filter(m => m.role === 'user').length} turns)\x1b[0m`)
+  } else if (shouldContinue) {
     const last = findLastSession(cwd)
     if (last) {
       session = last

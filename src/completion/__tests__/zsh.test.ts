@@ -17,8 +17,8 @@ describe('emitZsh', () => {
   })
 
   it('declares ollama and openrouter model fetchers', () => {
-    expect(script).toContain('_prism_models_model_ollama()')
-    expect(script).toContain('_prism_models_model_openrouter()')
+    expect(script).toContain('_prism_complete_model_ollama()')
+    expect(script).toContain('_prism_complete_model_openrouter()')
     expect(script).toContain('prism --complete model-ollama')
     expect(script).toContain('prism --complete model-openrouter')
   })
@@ -32,12 +32,12 @@ describe('emitZsh', () => {
 
   it('routes --or to the openrouter model completer', () => {
     expect(script).toContain('{--or,--openrouter}')
-    expect(script).toContain('_prism_models_model_openrouter')
+    expect(script).toContain('_prism_complete_model_openrouter')
     // exclusion list prevents suggesting both forms after one is given
     expect(script).toContain("'(--or --openrouter)'")
   })
 
   it('positional args fall through to ollama models', () => {
-    expect(script).toContain("'*::model:_prism_models_model_ollama'")
+    expect(script).toContain("'*::model:_prism_complete_model_ollama'")
   })
 })

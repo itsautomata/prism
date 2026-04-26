@@ -3,13 +3,25 @@
  * sourced via: eval "$(prism --completion zsh)"
  */
 
-import { FLAGS } from './spec.js'
+import { FLAGS, type ValueKind } from './spec.js'
 
 function escapeDesc(s: string): string {
   return s.replace(/'/g, "'\\''").replace(/:/g, '\\:')
 }
 
+function helperName(kind: ValueKind): string {
+  return `_prism_complete_${kind.replace(/-/g, '_')}`
+}
+
 export function emitZsh(): string {
+  // collect every value context that needs a dynamic completer
+  const dynamicKinds = new Set<ValueKind>()
+  // model-ollama is always declared because the positional fallback uses it
+  dynamicKinds.add('model-ollama')
+  for (const f of FLAGS) {
+    if (f.takesValue && f.takesValue !== 'number') dynamicKinds.add(f.takesValue)
+  }
+
   const flagSpecs: string[] = []
   for (const f of FLAGS) {
     const tokens = [f.flag, f.alias].filter(Boolean) as string[]
@@ -20,7 +32,7 @@ export function emitZsh(): string {
     if (f.takesValue === 'number') {
       body = `[${desc}]:number:`
     } else if (f.takesValue) {
-      body = `[${desc}]:model:_prism_models_${f.takesValue.replace('-', '_')}`
+      body = `[${desc}]:value:${helperName(f.takesValue)}`
     } else {
       body = `[${desc}]`
     }
@@ -36,6 +48,16 @@ export function emitZsh(): string {
     }
   }
 
+  // emit a helper function per dynamic context
+  const helpers: string[] = []
+  for (const kind of dynamicKinds) {
+    helpers.push(`${helperName(kind)}() {
+  local -a items
+  items=(\${(f)"$(prism --complete ${kind} 2>/dev/null)"})
+  compadd -a items
+}`)
+  }
+
   return `# prism shell completion (zsh)
 # sourced via: eval "$(prism --completion zsh)"
 
@@ -43,22 +65,12 @@ export function emitZsh(): string {
 autoload -Uz compinit
 (( $+functions[compdef] )) || compinit
 
-_prism_models_model_ollama() {
-  local -a models
-  models=(\${(f)"$(prism --complete model-ollama 2>/dev/null)"})
-  compadd -a models
-}
-
-_prism_models_model_openrouter() {
-  local -a models
-  models=(\${(f)"$(prism --complete model-openrouter 2>/dev/null)"})
-  compadd -a models
-}
+${helpers.join('\n\n')}
 
 _prism() {
   _arguments \\
 ${flagSpecs.join(' \\\n')} \\
-    '*::model:_prism_models_model_ollama'
+    '*::model:${helperName('model-ollama')}'
 }
 
 compdef _prism prism

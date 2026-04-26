@@ -12,18 +12,26 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs'
 import { join } from 'path'
 import { homedir } from 'os'
 
-export type ValueKind = 'model-ollama' | 'model-openrouter' | 'number'
+export type ValueKind = 'model-ollama' | 'model-openrouter' | 'number' | 'session-id'
 
 export interface FlagSpec {
   flag: string
   alias?: string
   desc: string
+  /** value-kind hint for shell completion (what to suggest after this flag) */
   takesValue?: ValueKind
+  /**
+   * true when the flag's value is a positional arg, not consumed by the flag itself.
+   * e.g. `--or qwen3:14b` — the model is positional, --or just flips a boolean.
+   * cli.ts uses this to decide whether to skip the next arg during validation.
+   */
+  positionalValue?: boolean
 }
 
 export const FLAGS: FlagSpec[] = [
-  { flag: '--or', alias: '--openrouter', desc: 'use OpenRouter provider', takesValue: 'model-openrouter' },
+  { flag: '--or', alias: '--openrouter', desc: 'use OpenRouter provider', takesValue: 'model-openrouter', positionalValue: true },
   { flag: '-c', alias: '--continue', desc: 'resume last session in this directory' },
+  { flag: '-r', alias: '--resume', desc: 'resume a specific session by id', takesValue: 'session-id' },
   { flag: '--max-tokens', desc: 'max output tokens per response', takesValue: 'number' },
   { flag: '--config', desc: 'show config file path' },
   { flag: '--sessions', desc: 'list recent sessions' },
@@ -41,6 +49,23 @@ export function allFlagTokens(): string[] {
 
 export function findFlag(token: string): FlagSpec | undefined {
   return FLAGS.find(f => f.flag === token || f.alias === token)
+}
+
+/**
+ * the set of flag tokens that *consume* their next argument (the next arg is the
+ * flag's value, not a positional). used by cli.ts to skip those values when
+ * validating unknown flags and counting positional args. flags marked with
+ * positionalValue are excluded because their "value" is actually a positional.
+ */
+export function valueTakingFlagTokens(): Set<string> {
+  const set = new Set<string>()
+  for (const f of FLAGS) {
+    if (f.takesValue && !f.positionalValue) {
+      set.add(f.flag)
+      if (f.alias) set.add(f.alias)
+    }
+  }
+  return set
 }
 
 export function completeOllamaModels(): string[] {
@@ -152,6 +177,17 @@ export async function completeOpenRouterModels(): Promise<string[]> {
   return catalog.map(m => m.id).sort()
 }
 
+export function completeSessionIds(): string[] {
+  // local import to avoid circular module load at top-level
+  // (sessions/store.ts is heavyweight and imported elsewhere too)
+  try {
+    const { listSessions } = require('../sessions/store.js')
+    return listSessions(20).map((s: { id: string }) => s.id)
+  } catch {
+    return []
+  }
+}
+
 export async function complete(context: string): Promise<string[]> {
   switch (context) {
     case 'flags':
@@ -160,6 +196,8 @@ export async function complete(context: string): Promise<string[]> {
       return completeOllamaModels()
     case 'model-openrouter':
       return await completeOpenRouterModels()
+    case 'session-id':
+      return completeSessionIds()
     default:
       return []
   }
