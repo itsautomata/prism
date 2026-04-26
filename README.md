@@ -76,6 +76,7 @@ prism --or anthropic/claude-haiku-4.5         # $1.00/M tokens
 
 the model must support tool calling on openrouter. see [openrouter.ai/docs](https://openrouter.ai/docs) for available models.
 
+
 ### sessions
 
 prism auto-saves your conversation after every turn. resume where you left off:
@@ -83,8 +84,11 @@ prism auto-saves your conversation after every turn. resume where you left off:
 ```bash
 prism --continue                              # resume last session in this directory
 prism -c                                      # same
-prism --or qwen3:14b --continue    # resume with a different model
-prism --sessions                              # list recent sessions
+prism --or qwen3:14b --continue               # resume with a different model
+prism --sessions                              # list recent sessions (numbered)
+prism -r 1                                    # resume the most recent session
+prism -r 3                                    # resume the 3rd most recent
+prism --resume <full-id>                      # resume by full id (for scripting)
 ```
 
 sessions saved at `~/.prism/sessions/`.
@@ -149,6 +153,19 @@ this project uses pydantic v2.
 /help             show commands
 /exit             quit
 ```
+
+## shell escape
+
+prefix any input with `!` to run it as a shell command without leaving prism. output stays in your terminal (the model never sees it unless you describe it).
+
+```
+! git status
+! ls -la
+```
+
+the prompt switches to amber `$` when you type `!`, signaling shell mode. press **esc** to exit shell mode.
+
+useful for: checking state mid-conversation (git status, file existence, processes) without burning model tokens or polluting context.
 
 ## output tokens
 
