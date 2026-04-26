@@ -11,6 +11,7 @@ import { execSync } from 'child_process'
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs'
 import { join } from 'path'
 import { homedir } from 'os'
+import { listSessions } from '../sessions/store.js'
 
 export type ValueKind = 'model-ollama' | 'model-openrouter' | 'number' | 'session-id'
 
@@ -178,11 +179,8 @@ export async function completeOpenRouterModels(): Promise<string[]> {
 }
 
 export function completeSessionIds(): string[] {
-  // local import to avoid circular module load at top-level
-  // (sessions/store.ts is heavyweight and imported elsewhere too)
   try {
-    const { listSessions } = require('../sessions/store.js')
-    return listSessions(20).map((s: { id: string }) => s.id)
+    return listSessions(20).map(s => s.id)
   } catch {
     return []
   }
