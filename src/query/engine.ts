@@ -234,12 +234,16 @@ export async function* query(options: QueryOptions): AsyncGenerator<QueryEvent> 
           ],
         })
       } else {
-        // SIMPLE RECOVERY: just ask the model to think about the error
+        // SIMPLE RECOVERY: structured internal recovery, no narration.
+        // the three-step procedure happens silently. user only sees the next
+        // tool call (or a result, or a blocking question).
         messages.push({
           role: 'user',
           content: [
             ...toolResults,
-            { type: 'text' as const, text: `the previous tool returned a non-zero exit code. was this expected or unexpected? if unexpected, explain the cause and try a different approach.` },
+            { type: 'text' as const, text: `the previous tool call in this turn errored. recover silently. first, identify the failure: read the error message and note which tool, which arguments, and what went wrong. then infer the cause (bad argument shape, missing permission, wrong path, stale state, tool unavailable, or the result is no longer needed) and settle on the most plausible one. finally, select the next action: retry the same tool with corrected inputs, switch to a different tool that achieves the goal, or skip the call entirely if the result is no longer needed for the user's request.
+
+no apology, no narration, no preamble. the user wants progress, not status reports. speak only when you have a result or a blocking question.` },
           ],
         })
       }
