@@ -50,6 +50,24 @@ const DEFAULT_CAPABILITIES: ModelCapabilities = {
   maxContextTokens: 128_000,
 }
 
+/**
+ * which model families HONOR an explicit cache_control marker we send.
+ * - anthropic/*: REQUIRED, caching only happens if we mark
+ * - google/gemini-*: honored on Pro/Flash 2.5+, caches the marked prefix
+ *
+ * NOT in this list (caching still happens, just not via our marker):
+ * - openai/* and deepseek/*: cache automatically server-side, markers are ignored
+ * - others: no caching at all, markers are stripped by openrouter
+ *
+ * we only mark when it actually changes behavior. no point sending bytes for nothing.
+ */
+function supportsExplicitCacheControl(modelId: string): boolean {
+  return (
+    modelId.startsWith('anthropic/') ||
+    modelId.startsWith('google/gemini-')
+  )
+}
+
 function inferCapabilities(modelId: string, meta: OpenRouterModelMeta | null): ModelCapabilities {
   const caps: ModelCapabilities = { ...DEFAULT_CAPABILITIES, maxTools: maxToolsForFamily(modelId) }
   if (!meta) return caps
@@ -330,14 +348,22 @@ export class OpenRouterProvider implements ProviderBridge {
   }
 
   private buildRequestBody(params: MessageParams, stream: boolean) {
-    const messages = this.formatMessages(params.messages)
+    const modelId = params.model || this.model
+    const useCache = supportsExplicitCacheControl(modelId)
+
+    const messages: unknown[] = this.formatMessages(params.messages)
 
     if (params.system) {
-      messages.unshift({ role: 'system', content: params.system })
+      // when caching is on, system content must be an array of blocks so we can
+      // attach cache_control. otherwise stick with the simple string form.
+      const systemContent = useCache
+        ? [{ type: 'text', text: params.system, cache_control: { type: 'ephemeral' } }]
+        : params.system
+      messages.unshift({ role: 'system', content: systemContent })
     }
 
     const body: Record<string, unknown> = {
-      model: params.model || this.model,
+      model: modelId,
       messages,
       stream,
     }
@@ -345,7 +371,14 @@ export class OpenRouterProvider implements ProviderBridge {
     if (params.tools && params.tools.length > 0) {
       const maxTools = this.capabilities.maxTools
       const tools = params.tools.slice(0, maxTools)
-      body.tools = tools.map(t => this.formatToolSchema(t))
+      const formatted: any[] = tools.map(t => this.formatToolSchema(t))
+      // mark the last tool with cache_control to cache the entire tools block
+      // (anthropic's prompt cache treats the tools section as one cacheable unit
+      // when any tool carries cache_control).
+      if (useCache && formatted.length > 0) {
+        formatted[formatted.length - 1].cache_control = { type: 'ephemeral' }
+      }
+      body.tools = formatted
     }
 
     if (params.maxTokens) {
@@ -354,6 +387,11 @@ export class OpenRouterProvider implements ProviderBridge {
 
     if (params.temperature !== undefined) {
       body.temperature = params.temperature
+    }
+
+    // request usage breakdown so we get cache hit/miss telemetry back
+    if (useCache && stream) {
+      body.usage = { include: true }
     }
 
     return body
