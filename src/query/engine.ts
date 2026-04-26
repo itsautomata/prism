@@ -71,6 +71,7 @@ export async function* query(options: QueryOptions): AsyncGenerator<QueryEvent> 
   }
 
   let turnCount = 0
+  let consecutiveErrors = 0
 
   while (true) {
     // check abort
@@ -183,6 +184,13 @@ export async function* query(options: QueryOptions): AsyncGenerator<QueryEvent> 
       return content.includes('no files matching') || content.includes('no matches for')
     })
 
+    // track consecutive errors across turns. reset on success.
+    if (hasErrors) {
+      consecutiveErrors++
+    } else {
+      consecutiveErrors = 0
+    }
+
     if (hasEmptyResults && !hasErrors) {
       messages.push({
         role: 'user',
@@ -201,8 +209,8 @@ export async function* query(options: QueryOptions): AsyncGenerator<QueryEvent> 
         .map(b => `${b.name}(${JSON.stringify(b.input).slice(0, 200)})`)
         .join(', ')
 
-      // strong models get a recovery agent. weak models get a simple prompt.
-      if (capabilities.toolAccuracy >= 0.75) {
+      // first error: simple nudge. second consecutive error: spawn recovery agent.
+      if (consecutiveErrors >= 2) {
         // RECOVERY AGENT: fresh context, no bias from the failed attempt
         yield { type: 'tool_start', name: 'recovery agent', id: 'recovery' }
 

@@ -19,7 +19,6 @@ export interface LearnedRule {
 
 export interface ModelProfile {
   model: string
-  toolAccuracyOverride: number | null   // user can override default
   maxToolsOverride: number | null       // user can lower tool count
   rules: LearnedRule[]                  // explicit learned rules
 }
@@ -46,7 +45,6 @@ export function loadProfile(model: string): ModelProfile {
       const data = JSON.parse(readFileSync(path, 'utf-8'))
       return {
         model,
-        toolAccuracyOverride: data.toolAccuracyOverride ?? null,
         maxToolsOverride: data.maxToolsOverride ?? null,
         rules: data.rules ?? [],
       }
@@ -57,7 +55,6 @@ export function loadProfile(model: string): ModelProfile {
 
   return {
     model,
-    toolAccuracyOverride: null,
     maxToolsOverride: null,
     rules: [],
   }
@@ -94,13 +91,6 @@ export function removeRule(model: string, index: number): ModelProfile {
     profile.rules.splice(index, 1)
   }
 
-  saveProfile(profile)
-  return profile
-}
-
-export function setToolAccuracy(model: string, accuracy: number): ModelProfile {
-  const profile = loadProfile(model)
-  profile.toolAccuracyOverride = Math.max(0, Math.min(1, accuracy))
   saveProfile(profile)
   return profile
 }

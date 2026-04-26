@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import React, { useState, useCallback } from 'react'
 import { Box, useApp, useInput } from 'ink'
 import { Banner } from './Banner.js'
 import { MessageList, type DisplayMessage } from './MessageList.js'
@@ -96,7 +96,6 @@ export function App({ provider: initProvider, model: initModel, tools, capabilit
     const currentCaps: ModelCapabilities = {
       ...caps,
       ...(profile.maxToolsOverride ? { maxTools: profile.maxToolsOverride } : {}),
-      ...(profile.toolAccuracyOverride ? { toolAccuracy: profile.toolAccuracyOverride } : {}),
     }
     return buildSystemPrompt({ capabilities: currentCaps, tools: toolSchemas, cwd: process.cwd(), profile, projectContext })
   }, [caps, toolSchemas, profile])
@@ -188,7 +187,7 @@ export function App({ provider: initProvider, model: initModel, tools, capabilit
 
   return (
     <Box flexDirection="column" padding={1}>
-      <Banner model={model} provider={provider.name} maxTools={caps.maxTools} accuracy={caps.toolAccuracy}
+      <Banner model={model} provider={provider.name} maxTools={caps.maxTools}
         rulesCount={profile.rules.length} isResumed={initialMessages !== undefined && initialMessages.length > 0} />
       <Box flexDirection="column" flexGrow={1}>
         <MessageList messages={displayMessages} />

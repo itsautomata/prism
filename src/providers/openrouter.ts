@@ -1,6 +1,6 @@
 /**
  * OpenRouter provider adapter.
- * one API key, 200+ models. OpenAI-compatible format.
+ * one API key, 300+ models. OpenAI-compatible format.
  * free tier available. supports tool calling.
  *
  * API: POST https://openrouter.ai/api/v1/chat/completions
@@ -19,27 +19,25 @@ import type {
   StreamEvent,
   ToolUseBlock,
 } from '../types/index.js'
+import { getOpenRouterCatalog, type OpenRouterModelMeta } from '../completion/spec.js'
 
 const BASE_URL = 'https://openrouter.ai/api/v1'
 
-// capability profiles for known models on openrouter
-const MODEL_PROFILES: Record<string, Partial<ModelCapabilities>> = {
-  // free tier
-  'qwen/qwen3-coder-480b': { maxTools: 15, toolAccuracy: 0.85, maxContextTokens: 262_000 },
-  'deepseek/deepseek-r1': { maxTools: 10, toolAccuracy: 0.75, maxContextTokens: 128_000 },
-  'mistralai/mistral-small-3.1': { maxTools: 10, toolAccuracy: 0.75, maxContextTokens: 32_000 },
-  'meta-llama/llama-3.3-70b': { maxTools: 10, toolAccuracy: 0.75, maxContextTokens: 128_000 },
-  // cheap
-  'google/gemini-2.0-flash': { maxTools: 12, toolAccuracy: 0.8, maxContextTokens: 1_000_000 },
-  'google/gemini-2.5-flash': { maxTools: 12, toolAccuracy: 0.82, maxContextTokens: 1_000_000 },
-  'deepseek/deepseek-v3.2': { maxTools: 12, toolAccuracy: 0.8, maxContextTokens: 128_000 },
-  'openai/gpt-4.1-nano': { maxTools: 10, toolAccuracy: 0.78, maxContextTokens: 128_000 },
-  'openai/gpt-4.1-mini': { maxTools: 12, toolAccuracy: 0.82, maxContextTokens: 128_000 },
-  // mid range
-  'qwen/qwen3.6-plus': { maxTools: 15, toolAccuracy: 0.85, maxContextTokens: 1_000_000 },
-  'anthropic/claude-haiku-4.5': { maxTools: 15, toolAccuracy: 0.9, maxContextTokens: 200_000 },
-  'openai/gpt-4o': { maxTools: 15, toolAccuracy: 0.88, maxContextTokens: 128_000 },
-  'anthropic/claude-sonnet-4': { maxTools: 20, toolAccuracy: 0.95, maxContextTokens: 200_000 },
+// maxTools per model family. placeholder until we have more tools and a real design
+// the API doesn't expose this, so we approximate by family. /teach can
+// override via maxToolsOverride for any specific model.
+function maxToolsForFamily(modelId: string): number {
+  if (modelId.startsWith('anthropic/claude-sonnet') || modelId.startsWith('anthropic/claude-opus')) return 20
+  if (modelId.startsWith('anthropic/')) return 15
+  if (modelId.startsWith('openai/gpt-4') || modelId.startsWith('openai/gpt-5')) return 15
+  if (modelId.startsWith('openai/')) return 10
+  if (modelId.startsWith('google/gemini-2.5') || modelId.startsWith('google/gemini-3')) return 12
+  if (modelId.startsWith('google/')) return 10
+  if (modelId.startsWith('qwen/')) return 12
+  if (modelId.startsWith('deepseek/')) return 10
+  if (modelId.startsWith('meta-llama/')) return 10
+  if (modelId.startsWith('mistralai/')) return 10
+  return 8
 }
 
 const DEFAULT_CAPABILITIES: ModelCapabilities = {
@@ -50,7 +48,23 @@ const DEFAULT_CAPABILITIES: ModelCapabilities = {
   vision: false,
   strictMode: false,
   maxContextTokens: 128_000,
-  toolAccuracy: 0.75,
+}
+
+function inferCapabilities(modelId: string, meta: OpenRouterModelMeta | null): ModelCapabilities {
+  const caps: ModelCapabilities = { ...DEFAULT_CAPABILITIES, maxTools: maxToolsForFamily(modelId) }
+  if (!meta) return caps
+
+  if (typeof meta.context_length === 'number' && meta.context_length > 0) {
+    caps.maxContextTokens = meta.context_length
+  }
+  const inputs = meta.architecture?.input_modalities ?? []
+  caps.vision = inputs.includes('image')
+
+  const params = meta.supported_parameters ?? []
+  caps.thinking = params.includes('reasoning') || params.includes('include_reasoning')
+  caps.parallelToolCalls = params.includes('tools') && params.includes('tool_choice')
+
+  return caps
 }
 
 interface OpenAIToolCall {
@@ -90,12 +104,6 @@ export class OpenRouterProvider implements ProviderBridge {
     this.apiKey = config.apiKey || process.env.OPENROUTER_API_KEY || ''
     if (config.model) this.model = config.model
 
-    // look up model-specific capabilities
-    const profile = MODEL_PROFILES[this.model]
-    if (profile) {
-      this.capabilities = { ...DEFAULT_CAPABILITIES, ...profile }
-    }
-
     // verify connection
     if (!this.apiKey) {
       throw new Error(
@@ -103,6 +111,12 @@ export class OpenRouterProvider implements ProviderBridge {
         'get one free at openrouter.ai/keys'
       )
     }
+
+    // populate the catalog cache (refreshes if stale; harmless if already fresh)
+    // and use it to derive this model's capabilities from live API data.
+    const catalog = await getOpenRouterCatalog()
+    const meta = catalog.find(m => m.id === this.model) || null
+    this.capabilities = inferCapabilities(this.model, meta)
 
     try {
       const res = await fetch(`${BASE_URL}/models`, {

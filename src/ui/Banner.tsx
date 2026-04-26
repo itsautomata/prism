@@ -7,7 +7,6 @@ interface BannerProps {
   model: string
   provider: string
   maxTools: number
-  accuracy: number
   rulesCount: number
   isResumed?: boolean
 }
@@ -20,7 +19,7 @@ function shortenPath(cwd: string): string {
   return cwd
 }
 
-export function Banner({ model, provider, maxTools, accuracy, rulesCount, isResumed }: BannerProps) {
+export function Banner({ model, provider, maxTools, rulesCount, isResumed }: BannerProps) {
   const cwd = shortenPath(process.cwd())
 
   return (
@@ -39,7 +38,7 @@ export function Banner({ model, provider, maxTools, accuracy, rulesCount, isResu
             <Text color={theme.textDim}>{provider}</Text>
           </>
         )}
-        <Text color={theme.textMuted}> / tools: {maxTools} / accuracy: {Math.round(accuracy * 100)}%</Text>
+        <Text color={theme.textMuted}> / tools: {maxTools}</Text>
         {rulesCount > 0 && (
           <>
             <Text color={theme.textMuted}> / </Text>

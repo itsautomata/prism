@@ -20,38 +20,40 @@ import type {
   ToolUseBlock,
 } from '../types/index.js'
 
-// ollama model capability profiles
+// ollama model capability profiles.
+// maxTools is a placeholder cap (see openrouter.ts notes); prism has ~7 tools
+// today so it's a no-op. maxContextTokens is the real signal.
 const MODEL_PROFILES: Record<string, Partial<ModelCapabilities>> = {
   // llama
-  'llama3.2': { maxTools: 5, toolAccuracy: 0.65, maxContextTokens: 128_000 },
-  'llama3.1': { maxTools: 8, toolAccuracy: 0.7, maxContextTokens: 128_000 },
-  'llama3.3': { maxTools: 10, toolAccuracy: 0.75, maxContextTokens: 128_000 },
-  'llama4': { maxTools: 12, toolAccuracy: 0.8, maxContextTokens: 128_000 },
+  'llama3.2': { maxTools: 5, maxContextTokens: 128_000 },
+  'llama3.1': { maxTools: 8, maxContextTokens: 128_000 },
+  'llama3.3': { maxTools: 10, maxContextTokens: 128_000 },
+  'llama4': { maxTools: 12, maxContextTokens: 128_000 },
   // qwen
-  'qwen2.5-coder': { maxTools: 10, toolAccuracy: 0.75, maxContextTokens: 32_000 },
-  'qwen3': { maxTools: 12, toolAccuracy: 0.8, maxContextTokens: 128_000 },
-  'qwen3:14b': { maxTools: 12, toolAccuracy: 0.82, maxContextTokens: 128_000 },
-  'qwen3:8b': { maxTools: 10, toolAccuracy: 0.78, maxContextTokens: 128_000 },
-  'qwen3-coder': { maxTools: 15, toolAccuracy: 0.85, maxContextTokens: 128_000 },
+  'qwen2.5-coder': { maxTools: 10, maxContextTokens: 32_000 },
+  'qwen3': { maxTools: 12, maxContextTokens: 128_000 },
+  'qwen3:14b': { maxTools: 12, maxContextTokens: 128_000 },
+  'qwen3:8b': { maxTools: 10, maxContextTokens: 128_000 },
+  'qwen3-coder': { maxTools: 15, maxContextTokens: 128_000 },
   // gemma
-  'gemma4': { maxTools: 12, toolAccuracy: 0.85, maxContextTokens: 256_000 },
-  'gemma4:e4b': { maxTools: 10, toolAccuracy: 0.8, maxContextTokens: 256_000 },
-  'gemma4:e2b': { maxTools: 5, toolAccuracy: 0.7, maxContextTokens: 256_000 },
-  'gemma4:27b': { maxTools: 12, toolAccuracy: 0.86, maxContextTokens: 256_000 },
-  'gemma4:31b': { maxTools: 12, toolAccuracy: 0.86, maxContextTokens: 256_000 },
+  'gemma4': { maxTools: 12, maxContextTokens: 256_000 },
+  'gemma4:e4b': { maxTools: 10, maxContextTokens: 256_000 },
+  'gemma4:e2b': { maxTools: 5, maxContextTokens: 256_000 },
+  'gemma4:27b': { maxTools: 12, maxContextTokens: 256_000 },
+  'gemma4:31b': { maxTools: 12, maxContextTokens: 256_000 },
   // deepseek
-  'deepseek-r1': { maxTools: 10, toolAccuracy: 0.75, maxContextTokens: 128_000 },
-  'deepseek-r1:14b': { maxTools: 10, toolAccuracy: 0.75, maxContextTokens: 128_000 },
-  'deepseek-coder-v2': { maxTools: 8, toolAccuracy: 0.7, maxContextTokens: 128_000 },
-  'deepseek-v3': { maxTools: 12, toolAccuracy: 0.8, maxContextTokens: 128_000 },
+  'deepseek-r1': { maxTools: 10, maxContextTokens: 128_000 },
+  'deepseek-r1:14b': { maxTools: 10, maxContextTokens: 128_000 },
+  'deepseek-coder-v2': { maxTools: 8, maxContextTokens: 128_000 },
+  'deepseek-v3': { maxTools: 12, maxContextTokens: 128_000 },
   // mistral / devstral
-  'mistral': { maxTools: 8, toolAccuracy: 0.7, maxContextTokens: 32_000 },
-  'mistral-small': { maxTools: 10, toolAccuracy: 0.75, maxContextTokens: 32_000 },
-  'devstral': { maxTools: 12, toolAccuracy: 0.8, maxContextTokens: 128_000 },
-  'devstral:24b': { maxTools: 12, toolAccuracy: 0.8, maxContextTokens: 128_000 },
+  'mistral': { maxTools: 8, maxContextTokens: 32_000 },
+  'mistral-small': { maxTools: 10, maxContextTokens: 32_000 },
+  'devstral': { maxTools: 12, maxContextTokens: 128_000 },
+  'devstral:24b': { maxTools: 12, maxContextTokens: 128_000 },
   // other
-  'command-r': { maxTools: 10, toolAccuracy: 0.75, maxContextTokens: 128_000 },
-  'glm4': { maxTools: 12, toolAccuracy: 0.82, maxContextTokens: 128_000 },
+  'command-r': { maxTools: 10, maxContextTokens: 128_000 },
+  'glm4': { maxTools: 12, maxContextTokens: 128_000 },
 }
 
 const DEFAULT_CAPABILITIES: ModelCapabilities = {
@@ -62,7 +64,6 @@ const DEFAULT_CAPABILITIES: ModelCapabilities = {
   vision: false,
   strictMode: false,
   maxContextTokens: 8_000,
-  toolAccuracy: 0.6,
 }
 
 interface OllamaToolCall {

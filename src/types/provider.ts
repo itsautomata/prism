@@ -15,7 +15,6 @@ export interface ModelCapabilities {
   vision: boolean
   strictMode: boolean
   maxContextTokens: number
-  toolAccuracy: number // 0-1
 }
 
 export interface ToolSchema {
