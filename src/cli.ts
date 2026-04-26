@@ -20,24 +20,69 @@ import { OpenRouterProvider } from './providers/openrouter.js'
 import { BashTool, ReadTool, EditTool, WriteTool, GlobTool, GrepTool, AgentTool, configureAgentTool } from './tools/index.js'
 import { loadConfig, initConfig, getConfigPath } from './config/config.js'
 import { createSession, findLastSession, listSessions } from './sessions/store.js'
+import { allFlagTokens, complete } from './completion/spec.js'
+import { emitBash } from './completion/bash.js'
+import { emitZsh } from './completion/zsh.js'
+import { installCompletion, maybeAutoInstall, type SupportedShell } from './completion/install.js'
 import type { ProviderBridge, Message } from './types/index.js'
 import type { Session } from './sessions/types.js'
 
 async function main() {
+  const args = process.argv.slice(2)
+
+  // --completion <shell>: print shell completion script and exit
+  const completionIdx = args.indexOf('--completion')
+  if (completionIdx !== -1) {
+    const shell = args[completionIdx + 1]
+    if (shell === 'bash') {
+      process.stdout.write(emitBash())
+      process.exit(0)
+    } else if (shell === 'zsh') {
+      process.stdout.write(emitZsh())
+      process.exit(0)
+    } else {
+      console.error(`\x1b[31m--completion requires bash or zsh, got: ${shell || '(none)'}\x1b[0m`)
+      process.exit(1)
+    }
+  }
+
+  // --install-completion [shell]: append the eval line to the user's shell rc
+  const installIdx = args.indexOf('--install-completion')
+  if (installIdx !== -1) {
+    const next = args[installIdx + 1]
+    const requested = (next === 'bash' || next === 'zsh') ? next as SupportedShell : undefined
+    try {
+      const result = installCompletion(requested)
+      const verb = result.status === 'already-installed' ? 'already installed in' : 'installed to'
+      console.log(`\x1b[38;2;0;255;136mprism completion ${verb}\x1b[0m ${result.rcPath}`)
+      console.log(`\x1b[2mrestart your shell to enable tab completion (or run \`exec ${result.shell}\` to reload in place).\x1b[0m`)
+      process.exit(0)
+    } catch (e) {
+      console.error(`\x1b[31m${(e as Error).message}\x1b[0m`)
+      process.exit(1)
+    }
+  }
+
+  // --complete <context>: print suggestions for tab completion (internal)
+  const completeIdx = args.indexOf('--complete')
+  if (completeIdx !== -1) {
+    const context = args[completeIdx + 1]
+    if (!context) {
+      process.exit(0)
+    }
+    const suggestions = await complete(context)
+    if (suggestions.length > 0) {
+      process.stdout.write(suggestions.join('\n') + '\n')
+    }
+    process.exit(0)
+  }
+
   initConfig()
 
   const config = loadConfig()
-  const args = process.argv.slice(2)
 
-  // known flags
-  const KNOWN_FLAGS = new Set([
-    '--openrouter', '--or',
-    '--continue', '-c',
-    '--config',
-    '--sessions',
-    '--max-tokens',
-    '--help', '-h',
-  ])
+  // known flags (derived from completion spec, single source of truth)
+  const KNOWN_FLAGS = new Set([...allFlagTokens(), '--completion', '--complete', '--install-completion'])
 
   // help
   if (args.includes('--help') || args.includes('-h')) {
@@ -181,6 +226,13 @@ async function main() {
 
   // configure Agent tool with current provider (agents share it)
   configureAgentTool(provider, model, tools)
+
+  // first-run only: silently install shell completion if the user's shell
+  // is supported and we haven't done it before. no-op on subsequent runs.
+  const autoInstall = maybeAutoInstall()
+  if (autoInstall) {
+    console.log(`\x1b[2mshell completion installed to ${autoInstall.rcPath}. restart your shell or run \`exec ${autoInstall.shell}\` to enable tab completion.\x1b[0m`)
+  }
 
   const { waitUntilExit } = render(
     React.createElement(App, {
