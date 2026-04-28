@@ -154,6 +154,8 @@ this project uses pydantic v2.
 /exit             quit
 ```
 
+type `/` in the prompt to see the list with arrow-key navigation; press **tab** to to complete the selected command.
+
 ## shell escape
 
 prefix any input with `!` to run it as a shell command without leaving prism. output stays in your terminal (the model never sees it unless you describe it).
@@ -190,6 +192,7 @@ covering:
 - CLI parsing
 - sessions and `--resume`
 - shell completion
+- slash command autocomplete
 - git context detection
 - token counting
 - tools and permissions
