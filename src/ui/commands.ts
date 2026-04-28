@@ -7,6 +7,41 @@ import type React from 'react'
 import { addRule, removeRule, setMaxTools, type ModelProfile } from '../learning/profile.js'
 import type { DisplayMessage } from './MessageList.js'
 
+/**
+ * first source of truth for the slash commands. consumed by:
+ * - handleSlashCommand (this file): the dispatcher
+ * - SlashHints (the in-prompt completion dropdown)
+ * - any future help / usage rendering
+ */
+export interface SlashCommandSpec {
+  name: string
+  args?: string
+  desc: string
+}
+
+export const SLASH_COMMANDS: SlashCommandSpec[] = [
+  { name: '/model', args: '<name>', desc: 'switch model mid-conversation (keeps context)' },
+  { name: '/teach', args: '<rule>', desc: 'teach the model a rule (persisted)' },
+  { name: '/rules', desc: 'show learned rules' },
+  { name: '/forget', args: '<n>', desc: 'forget rule n' },
+  { name: '/max-tools', args: '<n>', desc: 'set max tools for this model' },
+  { name: '/clear', desc: 'clear the conversation' },
+  { name: '/help', desc: 'show commands' },
+  { name: '/exit', desc: 'quit' },
+]
+
+/**
+ * filter slash commands by case-insensitive prefix on the command name.
+ * caller is responsible for deciding when to call (e.g. only when the buffer
+ * starts with `/` and contains no spaces yet). returns [] for any input that
+ * doesn't begin with `/`, treating non-slash input as "no completions to offer".
+ */
+export function filterSlashCommands(query: string): SlashCommandSpec[] {
+  if (!query.startsWith('/')) return []
+  const q = query.toLowerCase()
+  return SLASH_COMMANDS.filter(c => c.name.toLowerCase().startsWith(q))
+}
+
 export type SwitchModelFn = (newModel: string) => Promise<void>
 
 export function handleSlashCommand(

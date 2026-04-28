@@ -1,6 +1,8 @@
-import React, { useRef, useEffect, useState, memo, useCallback } from 'react'
+import React, { useRef, useEffect, useState, memo, useCallback, useMemo } from 'react'
 import { Box, Text, useInput } from 'ink'
 import { theme } from './theme.js'
+import { filterSlashCommands } from './commands.js'
+import { SlashHints } from './SlashHints.js'
 
 interface PromptInputProps {
   onSubmit: (text: string) => void
@@ -12,6 +14,7 @@ export const PromptInput = memo(function PromptInput({ onSubmit, isLoading }: Pr
   const bufferRef = useRef('')
   // display state updates on a throttled schedule
   const [display, setDisplay] = useState('')
+  const [selectedHintIdx, setSelectedHintIdx] = useState(0)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const scheduleDisplayUpdate = useCallback(() => {
@@ -29,8 +32,42 @@ export const PromptInput = memo(function PromptInput({ onSubmit, isLoading }: Pr
     }
   }, [])
 
+  // slash-completion state derived from the current display.
+  // hide hints once the user adds a space (we're past the command name into args).
+  const firstWord = display.split(' ')[0] || ''
+  const showHints = display.startsWith('/') && !display.includes(' ')
+  const matches = useMemo(() => {
+    if (!showHints) return []
+    return filterSlashCommands(firstWord)
+  }, [showHints, firstWord])
+
+  // reset selection whenever the filter changes
+  useEffect(() => {
+    setSelectedHintIdx(0)
+  }, [firstWord, showHints])
+
   useInput((input, key) => {
     if (isLoading) return
+
+    // hint navigation: only when hints are showing
+    if (matches.length > 0) {
+      if (key.upArrow) {
+        setSelectedHintIdx(prev => Math.max(0, prev - 1))
+        return
+      }
+      if (key.downArrow) {
+        setSelectedHintIdx(prev => Math.min(matches.length - 1, prev + 1))
+        return
+      }
+      if (key.tab) {
+        const selected = matches[selectedHintIdx]
+        if (selected) {
+          bufferRef.current = selected.name + (selected.args ? ' ' : '')
+          setDisplay(bufferRef.current)
+        }
+        return
+      }
+    }
 
     // enter: submit
     if (key.return) {
@@ -57,7 +94,7 @@ export const PromptInput = memo(function PromptInput({ onSubmit, isLoading }: Pr
       return
     }
 
-    // ignore other control sequences (arrows, etc)
+    // ignore other control sequences (arrows, tab, etc) when no hint context
     if (key.ctrl || key.meta || key.upArrow || key.downArrow || key.leftArrow || key.rightArrow || key.tab) {
       return
     }
@@ -99,6 +136,7 @@ export const PromptInput = memo(function PromptInput({ onSubmit, isLoading }: Pr
           {!display && <Text color={theme.textMuted}> ask anything...</Text>}
         </Text>
       </Box>
+      <SlashHints matches={matches} selectedIdx={selectedHintIdx} />
     </Box>
   )
 })
