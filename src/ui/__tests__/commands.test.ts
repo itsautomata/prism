@@ -67,8 +67,8 @@ describe('filterSlashCommands', () => {
     expect(filterSlashCommands('   ')).toEqual([])
   })
 
-  it('returns all 11 commands for "/" alone', () => {
-    expect(filterSlashCommands('/').length).toBe(11)
+  it('returns all 12 commands for "/" alone', () => {
+    expect(filterSlashCommands('/').length).toBe(12)
   })
 
   it('returns /max-tools and /model for "/m"', () => {
@@ -284,21 +284,38 @@ describe('handleSlashCommand: plan mode', () => {
     expect(JSON.stringify(captured)).toContain('already in plan mode')
   })
 
-  it('/proceed turns plan mode off when on', () => {
+  it('/exec-plan turns plan mode off when on', () => {
     let value = true
     const set = (v: boolean) => { value = v }
-    handleSlashCommand('/proceed', 'm', makeProfile(), spy(), spy(), spy(), undefined, { value, set })
+    handleSlashCommand('/exec-plan', 'm', makeProfile(), spy(), spy(), spy(), undefined, { value, set })
     expect(value).toBe(false)
   })
 
-  it('/proceed when not in plan mode shows usage info, no flip', () => {
+  it('/exec-plan when not in plan mode shows usage info, no flip', () => {
     let value = false
     let captured: any = null
     const setMessages = (updater: any) => { captured = typeof updater === 'function' ? updater([]) : updater }
     const set = (v: boolean) => { value = v }
-    handleSlashCommand('/proceed', 'm', makeProfile(), spy(), setMessages, spy(), undefined, { value, set })
+    handleSlashCommand('/exec-plan', 'm', makeProfile(), spy(), setMessages, spy(), undefined, { value, set })
     expect(value).toBe(false)
     expect(JSON.stringify(captured)).toContain('not in plan mode')
+  })
+
+  it('/cancel-plan turns plan mode off when on', () => {
+    let value = true
+    const set = (v: boolean) => { value = v }
+    handleSlashCommand('/cancel-plan', 'm', makeProfile(), spy(), spy(), spy(), undefined, { value, set })
+    expect(value).toBe(false)
+  })
+
+  it('/cancel-plan emits abandon message (distinct from /exec-plan)', () => {
+    let value = true
+    let captured: any = null
+    const setMessages = (updater: any) => { captured = typeof updater === 'function' ? updater([]) : updater }
+    const set = (v: boolean) => { value = v }
+    handleSlashCommand('/cancel-plan', 'm', makeProfile(), spy(), setMessages, spy(), undefined, { value, set })
+    expect(value).toBe(false)
+    expect(JSON.stringify(captured)).toContain('abandoned')
   })
 
   it('/plan without planMode arg is a no-op (graceful)', () => {

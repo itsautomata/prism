@@ -55,7 +55,7 @@ export function Banner({ model, provider, maxTools, rulesCount, isResumed, inPla
         {inPlanMode && (
           <>
             <Text color={theme.textMuted}> / </Text>
-            <Text color={theme.warning} bold>plan mode</Text>
+            <Text color={theme.planMode} bold>plan mode</Text>
           </>
         )}
       </Box>

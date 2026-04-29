@@ -45,6 +45,8 @@ const INTERNAL_PREFIXES = [
   '[recovery agent diagnosis]',
   'using the tool results above, answer the user',
   '[user ran in shell:',
+  '[plan approved by user',
+  '[the plan was abandoned by the user',
 ]
 
 function rebuildDisplayMessages(messages?: Message[]): DisplayMessage[] {
@@ -117,25 +119,15 @@ export function App({ provider: initProvider, model: initModel, tools, capabilit
     if (!isLoading) return
     if (key.escape && abortController) {
       abortController.abort()
-      setDisplayMessages(prev => [...prev, { role: 'tool_result', text: 'interrupted by user', isError: false }])
+      setDisplayMessages(prev => [...prev, { role: 'tool_result', text: 'interrupted by user. tell prism what to do instead.', isError: false }])
     }
   })
 
-  const handleSubmit = useCallback(async (input: string) => {
-    if (input.startsWith('!')) {
-      if (handleBashCommand(input, setDisplayMessages)) return
-    }
-
-    if (input.startsWith('/')) {
-      const switchFn = (newModel: string) => switchModel(newModel, session, setProvider, setModel, setCaps, setDisplayMessages)
-      const handled = handleSlashCommand(input, model, profile, setProfile, setDisplayMessages, exit, switchFn, { value: inPlanMode, set: setInPlanMode })
-      if (handled) return
-    }
-
-    setDisplayMessages(prev => [...prev, { role: 'user', text: input }])
+  // run the model loop on whatever's currently in `messages`. used by both
+  // user-typed submissions and slash-command-triggered synthetic turns.
+  const runModelLoop = useCallback(async () => {
     setTurnCount(prev => prev + 1)
     setIsLoading(true)
-    messages.push({ role: 'user', content: [{ type: 'text', text: input }] })
 
     const controller = new AbortController()
     setAbortController(controller)
@@ -175,6 +167,26 @@ export function App({ provider: initProvider, model: initModel, tools, capabilit
             setTokenInfo(event.formatted)
             break
           case 'done':
+            // surface unusual exit reasons so silent failures don't look like the model went idle
+            if (event.reason === 'empty_turn_cap') {
+              setDisplayMessages(prev => [...prev, {
+                role: 'tool_result',
+                text: 'the model went silent after running tools (2 nudges, no answer). try a stronger model with /model, or rephrase the question.',
+                isError: true,
+              }])
+            } else if (event.reason === 'max_turns') {
+              setDisplayMessages(prev => [...prev, {
+                role: 'tool_result',
+                text: `max turns reached (${event.turnCount}). the model may be looping. try /clear or rephrase.`,
+                isError: true,
+              }])
+            } else if (event.reason === 'user_denied') {
+              setDisplayMessages(prev => [...prev, {
+                role: 'tool_result',
+                text: 'permission denied. tell prism what to do instead.',
+                isError: false,
+              }])
+            }
             setTimeout(() => {
               setTurnCount(event.turnCount)
               setDisplayMessages(prev => prev.map(m => m.isStreaming ? { ...m, isStreaming: false } : m))
@@ -199,7 +211,35 @@ export function App({ provider: initProvider, model: initModel, tools, capabilit
     session.messages = messages
     saveSession(session)
     setTimeout(() => { setAbortController(null); setIsLoading(false) }, 0)
-  }, [provider, model, tools, messages, getSystemPrompt])
+  }, [provider, model, tools, messages, getSystemPrompt, session])
+
+  // synthetic turn: push a hidden user message (filtered from UI display by
+  // INTERNAL_PREFIXES) and invoke the model on it. used by /exec-plan and
+  // /cancel-plan to give the model an explicit signal about what just happened.
+  const triggerSyntheticTurn = useCallback((hiddenMsg: string) => {
+    messages.push({ role: 'user', content: [{ type: 'text', text: hiddenMsg }] })
+    runModelLoop()
+  }, [messages, runModelLoop])
+
+  const handleSubmit = useCallback(async (input: string) => {
+    if (input.startsWith('!')) {
+      if (handleBashCommand(input, setDisplayMessages)) return
+    }
+
+    if (input.startsWith('/')) {
+      const switchFn = (newModel: string) => switchModel(newModel, session, setProvider, setModel, setCaps, setDisplayMessages)
+      const handled = handleSlashCommand(input, model, profile, setProfile, setDisplayMessages, exit, switchFn, {
+        value: inPlanMode,
+        set: setInPlanMode,
+        trigger: triggerSyntheticTurn,
+      })
+      if (handled) return
+    }
+
+    setDisplayMessages(prev => [...prev, { role: 'user', text: input }])
+    messages.push({ role: 'user', content: [{ type: 'text', text: input }] })
+    await runModelLoop()
+  }, [provider, model, tools, messages, getSystemPrompt, inPlanMode, triggerSyntheticTurn])
 
   return (
     <Box flexDirection="column" padding={1}>
@@ -214,7 +254,7 @@ export function App({ provider: initProvider, model: initModel, tools, capabilit
         )}
       </Box>
       <StatusBar turnCount={turnCount} tokenInfo={tokenInfo} />
-      <PromptInput onSubmit={handleSubmit} isLoading={isLoading} />
+      <PromptInput onSubmit={handleSubmit} isLoading={isLoading} inPlanMode={inPlanMode} />
     </Box>
   )
 }

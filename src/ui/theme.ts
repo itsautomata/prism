@@ -16,7 +16,8 @@ export const theme = {
 
   // accents
   accent: '#00ddff',         // cyan for tool names
-  warning: '#ffaa00',        // amber for warnings
+  warning: '#ffaa00',        // amber for shell mode and warnings
+  planMode: '#a78bfa',       // soft violet for plan mode (cool, contemplative)
   error: '#ff4444',          // red for errors
   success: '#00ff88',        // same as primary
 

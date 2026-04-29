@@ -23,7 +23,8 @@ export interface SlashCommandSpec {
 export const SLASH_COMMANDS: SlashCommandSpec[] = [
   { name: '/model', args: '<name>', desc: 'switch model mid-conversation (keeps context)' },
   { name: '/plan', desc: 'enter plan mode (model proposes before executing)' },
-  { name: '/proceed', desc: 'exit plan mode and execute the plan' },
+  { name: '/exec-plan', desc: 'exit plan mode and execute the plan' },
+  { name: '/cancel-plan', desc: 'exit plan mode without executing' },
   { name: '/teach', args: '<rule>', desc: 'teach the model a rule (persisted)' },
   { name: '/rules', desc: 'show learned rules' },
   { name: '/forget', args: '<n>', desc: 'forget rule n' },
@@ -56,7 +57,17 @@ export function handleSlashCommand(
   setMessages: React.Dispatch<React.SetStateAction<DisplayMessage[]>>,
   exit: () => void,
   switchModel?: SwitchModelFn,
-  planMode?: { value: boolean; set: (v: boolean) => void },
+  planMode?: {
+    value: boolean
+    set: (v: boolean) => void
+    /**
+     * push a hidden user message into the conversation (filtered from the UI by
+     * INTERNAL_PREFIXES) and invoke the model loop. used by /exec-plan and
+     * /cancel-plan to give the model an explicit "what just happened" signal,
+     * since neither slash command is visible to the model otherwise.
+     */
+    trigger?: (hiddenMsg: string) => void
+  },
 ): boolean {
   const parts = input.split(' ')
   const cmd = parts[0]
@@ -154,14 +165,14 @@ export function handleSlashCommand(
       if (!planMode) {
         info('plan mode is not available in this build.')
       } else if (planMode.value) {
-        info('already in plan mode. propose a plan, then `/proceed` to execute.')
+        info('already in plan mode. propose a plan, then `/exec-plan` to execute or `/cancel-plan` to abandon.')
       } else {
         planMode.set(true)
-        info('plan mode: on. the model will research and propose a plan. type `/proceed` to execute, or keep talking to revise.')
+        info('plan mode: on. the model will research and propose a plan. type `/exec-plan` to execute, `/cancel-plan` to abandon, or keep talking to revise.')
       }
       return true
 
-    case '/proceed':
+    case '/exec-plan':
       if (!planMode) {
         info('plan mode is not available in this build.')
       } else if (!planMode.value) {
@@ -169,6 +180,19 @@ export function handleSlashCommand(
       } else {
         planMode.set(false)
         info('plan mode: off. executing.')
+        planMode.trigger?.('[plan approved by user. execute the plan above. use Edit, Write, and Bash as needed.]')
+      }
+      return true
+
+    case '/cancel-plan':
+      if (!planMode) {
+        info('plan mode is not available in this build.')
+      } else if (!planMode.value) {
+        info('not in plan mode.')
+      } else {
+        planMode.set(false)
+        info('plan mode: off. plan abandoned.')
+        planMode.trigger?.('[the plan was abandoned by the user. ask why and what they want to do next instead.]')
       }
       return true
 

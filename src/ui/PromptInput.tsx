@@ -7,9 +7,10 @@ import { SlashHints } from './SlashHints.js'
 interface PromptInputProps {
   onSubmit: (text: string) => void
   isLoading: boolean
+  inPlanMode?: boolean
 }
 
-export const PromptInput = memo(function PromptInput({ onSubmit, isLoading }: PromptInputProps) {
+export const PromptInput = memo(function PromptInput({ onSubmit, isLoading, inPlanMode }: PromptInputProps) {
   // buffer stores keystrokes without triggering re-renders
   const bufferRef = useRef('')
   // display state updates on a throttled schedule
@@ -119,14 +120,18 @@ export const PromptInput = memo(function PromptInput({ onSubmit, isLoading }: Pr
   }
 
   const isShell = display.startsWith('!')
-  const promptChar = isShell ? '$' : '◆'
-  const accent = isShell ? theme.warning : theme.prompt
+  const isPlanInput = inPlanMode && !isShell
+  const promptChar = isShell ? '$' : (isPlanInput ? '◇' : '◆')
+  const accent = isShell ? theme.warning : (isPlanInput ? theme.planMode : theme.prompt)
   const visible = isShell ? display.slice(1) : display
 
   return (
     <Box marginTop={1} flexDirection="column">
       {isShell && (
         <Text color={theme.textMuted}>  shell mode (delete the `!` to exit, or esc to clear. output stays here, the model won't see it)</Text>
+      )}
+      {isPlanInput && (
+        <Text color={theme.planMode}>  plan mode <Text color={theme.textMuted}>(type /exec-plan to execute, /cancel-plan to abandon, or push back to revise)</Text></Text>
       )}
       <Box>
         <Text color={accent}>{promptChar} </Text>
