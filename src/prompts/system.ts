@@ -19,10 +19,11 @@ interface PromptOptions {
   profile?: ModelProfile
   projectContext?: ProjectContext
   memory?: Memory
+  inPlanMode?: boolean
 }
 
 export function buildSystemPrompt(options: PromptOptions): string {
-  const { capabilities, tools, cwd, profile, projectContext, memory } = options
+  const { capabilities, tools, cwd, profile, projectContext, memory, inPlanMode } = options
 
   const sections = [
     getCore(),
@@ -45,6 +46,12 @@ export function buildSystemPrompt(options: PromptOptions): string {
   if (profile) {
     const learned = rulesToPrompt(profile)
     if (learned) sections.push(learned)
+  }
+
+  // plan mode addendum goes LAST so it overrides any conflicting instruction.
+  // user enters plan mode via /plan, exits via /proceed.
+  if (inPlanMode) {
+    sections.push(getPlanModeAddendum())
   }
 
   return sections.join('\n\n')
@@ -104,6 +111,20 @@ function getGitGuidance(): string {
 - For live info (diffs, blame, log), use Bash with git commands.
 - Before committing, always show the user what will be committed.
 - Never force-push or reset --hard without explicit permission.`
+}
+
+function getPlanModeAddendum(): string {
+  return `# plan mode
+
+you are in plan mode. the user wants to inspect your approach before any change is made. the rules:
+
+- research with Read, Grep, Glob, and read-only Bash to understand the work
+- write a plan in markdown: what you would do, why, and what you would NOT touch
+- do NOT call Edit, Write, or destructive Bash in this turn
+- if the user gives feedback, revise the plan and present the new version
+- the user will type \`/proceed\` when ready for you to execute. only then start changing things.
+
+write the plan as your normal response. no preamble, no apology, no narration about being in plan mode.`
 }
 
 function getEnvironment(cwd: string): string {

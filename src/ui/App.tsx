@@ -76,6 +76,7 @@ export function App({ provider: initProvider, model: initModel, tools, capabilit
     toolName: string; description: string; id: string; resolve: (choice: PermissionChoice) => void
   } | null>(null)
   const [abortController, setAbortController] = useState<AbortController | null>(null)
+  const [inPlanMode, setInPlanMode] = useState(false)
 
   // projectContext is now passed in from cli.ts (so the user sees a startup
   // progress message during the scan). fall back to scanning here for any
@@ -108,8 +109,8 @@ export function App({ provider: initProvider, model: initModel, tools, capabilit
       ...caps,
       ...(profile.maxToolsOverride ? { maxTools: profile.maxToolsOverride } : {}),
     }
-    return buildSystemPrompt({ capabilities: currentCaps, tools: toolSchemas, cwd: process.cwd(), profile, projectContext, memory })
-  }, [caps, toolSchemas, profile, memory])
+    return buildSystemPrompt({ capabilities: currentCaps, tools: toolSchemas, cwd: process.cwd(), profile, projectContext, memory, inPlanMode })
+  }, [caps, toolSchemas, profile, memory, inPlanMode])
 
   useInput((input, key) => {
     if (!isLoading && key.ctrl && input === 'c') { exit(); return }
@@ -127,7 +128,7 @@ export function App({ provider: initProvider, model: initModel, tools, capabilit
 
     if (input.startsWith('/')) {
       const switchFn = (newModel: string) => switchModel(newModel, session, setProvider, setModel, setCaps, setDisplayMessages)
-      const handled = handleSlashCommand(input, model, profile, setProfile, setDisplayMessages, exit, switchFn)
+      const handled = handleSlashCommand(input, model, profile, setProfile, setDisplayMessages, exit, switchFn, { value: inPlanMode, set: setInPlanMode })
       if (handled) return
     }
 
@@ -203,7 +204,8 @@ export function App({ provider: initProvider, model: initModel, tools, capabilit
   return (
     <Box flexDirection="column" padding={1}>
       <Banner model={model} provider={provider.name} maxTools={caps.maxTools}
-        rulesCount={profile.rules.length} isResumed={initialMessages !== undefined && initialMessages.length > 0} />
+        rulesCount={profile.rules.length} isResumed={initialMessages !== undefined && initialMessages.length > 0}
+        inPlanMode={inPlanMode} />
       <Box flexDirection="column" flexGrow={1}>
         <MessageList messages={displayMessages} />
         {pendingPermission && (

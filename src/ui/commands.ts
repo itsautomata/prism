@@ -22,6 +22,8 @@ export interface SlashCommandSpec {
 
 export const SLASH_COMMANDS: SlashCommandSpec[] = [
   { name: '/model', args: '<name>', desc: 'switch model mid-conversation (keeps context)' },
+  { name: '/plan', desc: 'enter plan mode (model proposes before executing)' },
+  { name: '/proceed', desc: 'exit plan mode and execute the plan' },
   { name: '/teach', args: '<rule>', desc: 'teach the model a rule (persisted)' },
   { name: '/rules', desc: 'show learned rules' },
   { name: '/forget', args: '<n>', desc: 'forget rule n' },
@@ -54,6 +56,7 @@ export function handleSlashCommand(
   setMessages: React.Dispatch<React.SetStateAction<DisplayMessage[]>>,
   exit: () => void,
   switchModel?: SwitchModelFn,
+  planMode?: { value: boolean; set: (v: boolean) => void },
 ): boolean {
   const parts = input.split(' ')
   const cmd = parts[0]
@@ -144,6 +147,28 @@ export function handleSlashCommand(
         } catch (e) {
           info(`failed to save: ${(e as Error).message}`)
         }
+      }
+      return true
+
+    case '/plan':
+      if (!planMode) {
+        info('plan mode is not available in this build.')
+      } else if (planMode.value) {
+        info('already in plan mode. propose a plan, then `/proceed` to execute.')
+      } else {
+        planMode.set(true)
+        info('plan mode: on. the model will research and propose a plan. type `/proceed` to execute, or keep talking to revise.')
+      }
+      return true
+
+    case '/proceed':
+      if (!planMode) {
+        info('plan mode is not available in this build.')
+      } else if (!planMode.value) {
+        info('not in plan mode. use `/plan` first.')
+      } else {
+        planMode.set(false)
+        info('plan mode: off. executing.')
       }
       return true
 

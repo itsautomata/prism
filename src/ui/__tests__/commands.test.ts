@@ -67,8 +67,8 @@ describe('filterSlashCommands', () => {
     expect(filterSlashCommands('   ')).toEqual([])
   })
 
-  it('returns all 9 commands for "/" alone', () => {
-    expect(filterSlashCommands('/').length).toBe(9)
+  it('returns all 11 commands for "/" alone', () => {
+    expect(filterSlashCommands('/').length).toBe(11)
   })
 
   it('returns /max-tools and /model for "/m"', () => {
@@ -259,8 +259,53 @@ describe('handleSlashCommand: dispatch', () => {
 describe('handleSlashCommand: drift catcher', () => {
   it('every command in SLASH_COMMANDS is dispatched (returns true)', () => {
     for (const cmd of SLASH_COMMANDS) {
-      const result = handleSlashCommand(cmd.name, 'm', makeProfile(), spy(), spy(), spy())
+      const planMode = { value: false, set: () => {} }
+      const result = handleSlashCommand(cmd.name, 'm', makeProfile(), spy(), spy(), spy(), undefined, planMode)
       expect(result, `${cmd.name} should be dispatched`).toBe(true)
     }
+  })
+})
+
+describe('handleSlashCommand: plan mode', () => {
+  it('/plan turns plan mode on when off', () => {
+    let value = false
+    const set = (v: boolean) => { value = v }
+    handleSlashCommand('/plan', 'm', makeProfile(), spy(), spy(), spy(), undefined, { value, set })
+    expect(value).toBe(true)
+  })
+
+  it('/plan when already on does not flip and shows usage info', () => {
+    let value = true
+    let captured: any = null
+    const setMessages = (updater: any) => { captured = typeof updater === 'function' ? updater([]) : updater }
+    const set = (v: boolean) => { value = v }
+    handleSlashCommand('/plan', 'm', makeProfile(), spy(), setMessages, spy(), undefined, { value, set })
+    expect(value).toBe(true)
+    expect(JSON.stringify(captured)).toContain('already in plan mode')
+  })
+
+  it('/proceed turns plan mode off when on', () => {
+    let value = true
+    const set = (v: boolean) => { value = v }
+    handleSlashCommand('/proceed', 'm', makeProfile(), spy(), spy(), spy(), undefined, { value, set })
+    expect(value).toBe(false)
+  })
+
+  it('/proceed when not in plan mode shows usage info, no flip', () => {
+    let value = false
+    let captured: any = null
+    const setMessages = (updater: any) => { captured = typeof updater === 'function' ? updater([]) : updater }
+    const set = (v: boolean) => { value = v }
+    handleSlashCommand('/proceed', 'm', makeProfile(), spy(), setMessages, spy(), undefined, { value, set })
+    expect(value).toBe(false)
+    expect(JSON.stringify(captured)).toContain('not in plan mode')
+  })
+
+  it('/plan without planMode arg is a no-op (graceful)', () => {
+    let captured: any = null
+    const setMessages = (updater: any) => { captured = typeof updater === 'function' ? updater([]) : updater }
+    const result = handleSlashCommand('/plan', 'm', makeProfile(), spy(), setMessages, spy())
+    expect(result).toBe(true)
+    expect(JSON.stringify(captured)).toContain('not available')
   })
 })

@@ -9,6 +9,7 @@ interface BannerProps {
   maxTools: number
   rulesCount: number
   isResumed?: boolean
+  inPlanMode?: boolean
 }
 
 function shortenPath(cwd: string): string {
@@ -19,7 +20,7 @@ function shortenPath(cwd: string): string {
   return cwd
 }
 
-export function Banner({ model, provider, maxTools, rulesCount, isResumed }: BannerProps) {
+export function Banner({ model, provider, maxTools, rulesCount, isResumed, inPlanMode }: BannerProps) {
   const cwd = shortenPath(process.cwd())
 
   return (
@@ -49,6 +50,12 @@ export function Banner({ model, provider, maxTools, rulesCount, isResumed }: Ban
           <>
             <Text color={theme.textMuted}> / </Text>
             <Text color={theme.textDim}>resumed</Text>
+          </>
+        )}
+        {inPlanMode && (
+          <>
+            <Text color={theme.textMuted}> / </Text>
+            <Text color={theme.warning} bold>plan mode</Text>
           </>
         )}
       </Box>
