@@ -7,20 +7,18 @@ Prism is an open source coding assistant that runs locally on your machine throu
 
 > actively built and tested. expect breaking changes. decentralized intelligence is cool
 
-![prism](assets/prism_2.png)
+![prism](https://raw.githubusercontent.com/itsautomata/prism/main/assets/prism_3.png)
 
 ## quick start
 
-requires Ollama v0.20.2+ for proper tool calling.
+requires Ollama v0.20.2+ for proper tool calling, and Node.js 20+.
 
 ```bash
 brew install ollama
 ollama serve
 ollama pull deepseek-r1:14b
 
-cd prism
-npm install         # install dependencies
-npm install -g .    # make `prism` available globally (creates a symlink in your npm bin)
+npm install -g @itsautomata/prism
 
 prism
 ```
@@ -77,7 +75,7 @@ prism --or anthropic/claude-haiku-4.5         # $1.00/M tokens
 the model must support tool calling on openrouter. see [openrouter.ai/docs](https://openrouter.ai/docs) for available models.
 
 
-### sessions
+## sessions
 
 prism auto-saves your conversation after every turn. resume where you left off:
 
@@ -128,23 +126,14 @@ prism learns per model. rules persist across sessions.
 
 rules saved at `~/.prism/models/<model>.json`.
 
-## lens.md
-
-add a `lens.md` to any project to give prism custom instructions for that directory.
-
-example:
-
-```markdown
-# lens.md
-use pytest for testing.
-never modify files in data/.
-this project uses pydantic v2.
-```
-
 ## commands
 
 ```
 /model <name>     switch model mid-conversation (keeps context)
+/plan             enter plan mode (model proposes before executing)
+/exec-plan        exit plan mode and execute the plan
+/cancel-plan      exit plan mode without executing
+/remember <fact>  add a timestamped fact to project memo
 /teach <rule>     teach the model a rule
 /rules            show learned rules
 /forget <n>       remove a rule
@@ -154,16 +143,53 @@ this project uses pydantic v2.
 /exit             quit
 ```
 
-type `/` in the prompt to see the list with arrow-key navigation; press **tab** to to complete the selected command.
+type `/` in the prompt to see the list with arrow-key navigation; press **tab** to complete the selected command.
+
+## plan mode
+
+for ambiguous tasks where the wrong opening move costs time. type `/plan`, ask the model what you want done, read the plan it proposes, push back and revise as needed, then type `/exec-plan` when you're ready for it to execute. type `/cancel-plan` to abandon without executing.
+
+![prism plan mode](https://raw.githubusercontent.com/itsautomata/prism/main/assets/plan_mode.png)
+
+```
+❯ /plan
+  plan mode: on. the model will research and propose a plan.
+
+❯ refactor the auth flow to use JWT instead of sessions
+  ◆ here's my plan:
+  1. read src/auth/* to map current session usage
+  2. ...
+
+❯ /exec-plan
+  plan mode: off. executing.
+```
+
+while in plan mode, the banner shows an amber `plan mode` indicator. the model is told to research with read-only tools and write a markdown plan, not to call Edit, Write, or destructive Bash. the plan stays in conversation context so the model can execute against it after `/exec-plan`.
+
+iteration: typing feedback without `/exec-plan` keeps you in plan mode and lets the model revise.
+
+## memory
+
+prism remembers per project across sessions in two layers:
+
+- **lens.md** at your project root: rules you enforce. git-committed, ships with the repo so collaborators inherit them.
+- **memo** at `~/.prism/projects/<id>/memo.md`: facts the model and you accumulate as you work. lives outside the repo. add an entry with `/remember <fact>`. each entry is timestamped with the date so the model can spot stale info.
+
+example `lens.md`:
+
+```markdown
+use pytest for testing.
+never modify files in data/.
+this project uses pydantic v2.
+```
+
+opt out at startup: `prism --no-scan` (skip live project scan), `prism --no-memory` (skip lens.md + memo). both flags = bare prompt.
 
 ## shell escape
 
 prefix any input with `!` to run it as a shell command without leaving prism. output stays in your terminal (the model never sees it unless you describe it).
 
-```
-! git status
-! ls -la
-```
+![prism shell escape](https://raw.githubusercontent.com/itsautomata/prism/main/assets/shell.png)
 
 the prompt switches to amber `$` when you type `!`, signaling shell mode. press **esc** to exit shell mode.
 
@@ -180,6 +206,19 @@ prism --max-tokens 4000       # less for quick tasks
 ``` 
 
 
+## develop locally
+
+```bash
+git clone https://github.com/itsautomata/prism.git
+cd prism
+npm install
+npm run dev               # run from source via tsx
+npm run build             # produce dist/cli.js (required before global install from this dir)
+npm install -g .          # symlink your local build as the global `prism`
+```
+
+`dist/` is git-ignored, so `npm run build` is required before any `npm install -g .` in a fresh clone.
+
 ## tests (on going)
 
 ```bash
@@ -193,6 +232,8 @@ covering:
 - sessions and `--resume`
 - shell completion
 - slash command autocomplete
+- plan mode dispatch
+- memo persistence (per-project memory)
 - git context detection
 - token counting
 - tools and permissions
