@@ -18,10 +18,12 @@ const KEY = {
 }
 
 describe('PromptInput: slash autocomplete', () => {
-  let onSubmit: ReturnType<typeof vi.fn>
+  // typed explicitly so the `Mock` type is assignable to PromptInput's
+  // `onSubmit: (text: string) => void` prop signature
+  let onSubmit: (text: string) => void
 
   beforeEach(() => {
-    onSubmit = vi.fn()
+    onSubmit = vi.fn() as unknown as (text: string) => void
   })
 
   afterEach(() => {
