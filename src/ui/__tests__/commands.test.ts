@@ -67,8 +67,8 @@ describe('filterSlashCommands', () => {
     expect(filterSlashCommands('   ')).toEqual([])
   })
 
-  it('returns all 8 commands for "/" alone', () => {
-    expect(filterSlashCommands('/').length).toBe(8)
+  it('returns all 9 commands for "/" alone', () => {
+    expect(filterSlashCommands('/').length).toBe(9)
   })
 
   it('returns /max-tools and /model for "/m"', () => {

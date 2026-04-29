@@ -19,6 +19,8 @@ import { handleBashCommand } from './bash.js'
 import { switchModel } from './useModelSwitch.js'
 import type { ProviderBridge, Message, ModelCapabilities } from '../types/index.js'
 import type { Tool } from '../tools/Tool.js'
+import type { ProjectContext } from '../context/types.js'
+import type { Memory } from '../memory/inject.js'
 
 interface AppProps {
   provider: ProviderBridge
@@ -27,6 +29,8 @@ interface AppProps {
   capabilities: ModelCapabilities
   session: Session
   initialMessages?: Message[]
+  projectContext?: ProjectContext
+  memory?: Memory
 }
 
 // filter internal messages when rebuilding display from session
@@ -54,7 +58,7 @@ function rebuildDisplayMessages(messages?: Message[]): DisplayMessage[] {
   return display
 }
 
-export function App({ provider: initProvider, model: initModel, tools, capabilities: initCaps, session, initialMessages }: AppProps) {
+export function App({ provider: initProvider, model: initModel, tools, capabilities: initCaps, session, initialMessages, projectContext: initProjectContext, memory }: AppProps) {
   const [provider, setProvider] = useState<ProviderBridge>(initProvider)
   const [model, setModel] = useState(initModel)
   const [caps, setCaps] = useState(initCaps)
@@ -70,7 +74,10 @@ export function App({ provider: initProvider, model: initModel, tools, capabilit
   } | null>(null)
   const [abortController, setAbortController] = useState<AbortController | null>(null)
 
-  const [projectContext] = useState(() => scanProject(process.cwd()))
+  // projectContext is now passed in from cli.ts (so the user sees a startup
+  // progress message during the scan). fall back to scanning here for any
+  // caller that hasn't been updated yet.
+  const [projectContext] = useState(() => initProjectContext ?? scanProject(process.cwd()))
   const [messages] = useState<Message[]>(() => initialMessages ? [...initialMessages] : [])
   const toolSchemas = tools.map(t => toolToSchema(t))
 
@@ -98,8 +105,8 @@ export function App({ provider: initProvider, model: initModel, tools, capabilit
       ...caps,
       ...(profile.maxToolsOverride ? { maxTools: profile.maxToolsOverride } : {}),
     }
-    return buildSystemPrompt({ capabilities: currentCaps, tools: toolSchemas, cwd: process.cwd(), profile, projectContext })
-  }, [caps, toolSchemas, profile])
+    return buildSystemPrompt({ capabilities: currentCaps, tools: toolSchemas, cwd: process.cwd(), profile, projectContext, memory })
+  }, [caps, toolSchemas, profile, memory])
 
   useInput((input, key) => {
     if (!isLoading && key.ctrl && input === 'c') { exit(); return }

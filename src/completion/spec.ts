@@ -36,6 +36,8 @@ export const FLAGS: FlagSpec[] = [
   { flag: '--max-tokens', desc: 'max output tokens per response', takesValue: 'number' },
   { flag: '--config', desc: 'show config file path' },
   { flag: '--sessions', desc: 'list recent sessions' },
+  { flag: '--no-scan', desc: 'skip the live project scan at startup' },
+  { flag: '--no-memory', desc: 'skip lens.md + persistent memo at startup' },
   { flag: '-h', alias: '--help', desc: 'show help' },
 ]
 

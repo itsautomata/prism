@@ -9,6 +9,8 @@ import type { ModelProfile } from '../learning/profile.js'
 import { rulesToPrompt } from '../learning/profile.js'
 import type { ProjectContext } from '../context/types.js'
 import { formatContext } from '../context/inject.js'
+import type { Memory } from '../memory/inject.js'
+import { formatMemory } from '../memory/inject.js'
 
 interface PromptOptions {
   capabilities: ModelCapabilities
@@ -16,10 +18,11 @@ interface PromptOptions {
   cwd: string
   profile?: ModelProfile
   projectContext?: ProjectContext
+  memory?: Memory
 }
 
 export function buildSystemPrompt(options: PromptOptions): string {
-  const { capabilities, tools, cwd, profile, projectContext } = options
+  const { capabilities, tools, cwd, profile, projectContext, memory } = options
 
   const sections = [
     getCore(),
@@ -32,6 +35,11 @@ export function buildSystemPrompt(options: PromptOptions): string {
     if (projectContext.git) {
       sections.push(getGitGuidance())
     }
+  }
+
+  if (memory) {
+    const memBlock = formatMemory(memory)
+    if (memBlock) sections.push(memBlock)
   }
 
   if (profile) {

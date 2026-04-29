@@ -5,6 +5,7 @@
 
 import type React from 'react'
 import { addRule, removeRule, setMaxTools, type ModelProfile } from '../learning/profile.js'
+import { appendMemo, getProjectId } from '../memory/memo.js'
 import type { DisplayMessage } from './MessageList.js'
 
 /**
@@ -25,6 +26,7 @@ export const SLASH_COMMANDS: SlashCommandSpec[] = [
   { name: '/rules', desc: 'show learned rules' },
   { name: '/forget', args: '<n>', desc: 'forget rule n' },
   { name: '/max-tools', args: '<n>', desc: 'set max tools for this model' },
+  { name: '/remember', args: '<fact>', desc: 'add a fact to project memo (timestamped)' },
   { name: '/clear', desc: 'clear the conversation' },
   { name: '/help', desc: 'show commands' },
   { name: '/exit', desc: 'quit' },
@@ -129,6 +131,20 @@ export function handleSlashCommand(
         '  /help             this message',
         '  /exit             quit',
       ].join('\n'))
+      return true
+
+    case '/remember':
+      if (!args) {
+        info('usage: /remember <fact>')
+      } else {
+        try {
+          const id = getProjectId(process.cwd())
+          appendMemo(id, args)
+          info(`remembered: "${args}" (saved to ~/.prism/projects/${id}/memo.md)`)
+        } catch (e) {
+          info(`failed to save: ${(e as Error).message}`)
+        }
+      }
       return true
 
     case '/clear':

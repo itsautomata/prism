@@ -377,17 +377,8 @@ function detectDeps(cwd: string): DepsInfo {
   return { file: null, count: 0, names: [] }
 }
 
-function detectPrismState(cwd: string): PrismState {
-  const lensPath = join(cwd, 'lens.md')
-  const hasLensMd = existsSync(lensPath)
-
-  let lensContent: string | null = null
-  if (hasLensMd) {
-    try {
-      lensContent = readFileSync(lensPath, 'utf-8').trim()
-    } catch {}
-  }
-
+function detectPrismState(_cwd: string): PrismState {
+  // lens.md loading moved to src/memory/lens.ts (memory module).
   let learnedRules = 0
   try {
     const modelsDir = join(homedir(), '.prism', 'models')
@@ -401,7 +392,7 @@ function detectPrismState(cwd: string): PrismState {
     }
   } catch {}
 
-  return { hasLensMd, lensContent, learnedRules }
+  return { learnedRules }
 }
 
 function detectRuntime(): RuntimeInfo {

@@ -8,7 +8,7 @@ function makeContext(overrides: Partial<ProjectContext> = {}): ProjectContext {
     structure: { totalFiles: 42, filesByType: {}, directories: ['src', 'tests'], configFiles: [] },
     git: null,
     deps: { file: 'package.json', count: 5, names: [] },
-    prism: { hasLensMd: false, lensContent: null, learnedRules: 0 },
+    prism: { learnedRules: 0 },
     runtime: { shell: 'zsh', node: '20.0.0', python: null, docker: false },
     ...overrides,
   }

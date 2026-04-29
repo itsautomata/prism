@@ -25,7 +25,12 @@ import { homedir } from 'os'
 import { emitBash } from './completion/bash.js'
 import { emitZsh } from './completion/zsh.js'
 import { installCompletion, maybeAutoInstall, type SupportedShell } from './completion/install.js'
+import { scanProject } from './context/scanner.js'
+import { loadLens } from './memory/lens.js'
+import { getProjectId, loadMemo } from './memory/memo.js'
+import type { Memory } from './memory/inject.js'
 import type { ProviderBridge, Message } from './types/index.js'
+import type { ProjectContext } from './context/types.js'
 import type { Session } from './sessions/types.js'
 
 function shortenPath(cwd: string): string {
@@ -287,6 +292,40 @@ async function main() {
   // configure Agent tool with current provider (agents share it)
   configureAgentTool(provider, model, tools)
 
+  // load project context (scan + memory) with visible progress.
+  // each is independently opt-out via --no-scan and --no-memory.
+  const skipScan = args.includes('--no-scan')
+  const skipMemory = args.includes('--no-memory')
+
+  let projectContext: ProjectContext | undefined
+  if (skipScan) {
+    console.log(`\x1b[2m(scan skipped via --no-scan)\x1b[0m`)
+  } else {
+    process.stdout.write(`\x1b[2mscanning project...\x1b[0m`)
+    projectContext = scanProject(cwd)
+    const summary = `${projectContext.project.name}` +
+      (projectContext.project.language ? ` (${projectContext.project.language}` + (projectContext.project.framework ? ` / ${projectContext.project.framework}` : '') + ')' : '') +
+      `, ${projectContext.structure.totalFiles} files` +
+      (projectContext.git ? `, branch ${projectContext.git.branch}${projectContext.git.clean ? '' : ` (${projectContext.git.statusLines.length} uncommitted)`}` : '')
+    process.stdout.write(`\r\x1b[K\x1b[2m✓ ${summary}\x1b[0m\n`)
+  }
+
+  let memory: Memory | undefined
+  if (skipMemory) {
+    console.log(`\x1b[2m(memory skipped via --no-memory)\x1b[0m`)
+  } else {
+    const lens = loadLens(cwd)
+    const projectId = getProjectId(cwd)
+    const memo = loadMemo(projectId)
+    if (lens || memo) {
+      memory = { lens, memo }
+      const parts: string[] = []
+      if (lens) parts.push('lens.md')
+      if (memo) parts.push('memo')
+      console.log(`\x1b[2m✓ memory loaded (${parts.join(' + ')})\x1b[0m`)
+    }
+  }
+
   // first-run only: silently install shell completion if the user's shell
   // is supported and we haven't done it before. no-op on subsequent runs.
   const autoInstall = maybeAutoInstall()
@@ -302,6 +341,8 @@ async function main() {
       capabilities,
       session,
       initialMessages,
+      projectContext,
+      memory,
     })
   )
 

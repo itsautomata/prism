@@ -1,12 +1,13 @@
 /**
- * format project context for system prompt injection.
- * compact. every line earns its place.
+ * format the live project scan for system prompt injection.
+ * session-specific signal. lens.md and the persistent memo live in the
+ * memory module and are injected separately as `# project memory`.
  */
 
 import type { ProjectContext } from './types.js'
 
 export function formatContext(ctx: ProjectContext): string {
-  const lines: string[] = ['# project context']
+  const lines: string[] = ['# project scan']
 
   // project identity
   const { project } = ctx
@@ -59,13 +60,6 @@ export function formatContext(ctx: ProjectContext): string {
   // prism state
   if (ctx.prism.learnedRules > 0) {
     lines.push(`learned rules: ${ctx.prism.learnedRules}`)
-  }
-
-  // lens.md — project-specific instructions, injected directly
-  if (ctx.prism.lensContent) {
-    lines.push('')
-    lines.push('# project instructions (from lens.md)')
-    lines.push(ctx.prism.lensContent)
   }
 
   return lines.join('\n')

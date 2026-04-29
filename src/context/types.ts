@@ -42,8 +42,6 @@ export interface DepsInfo {
 }
 
 export interface PrismState {
-  hasLensMd: boolean
-  lensContent: string | null
   learnedRules: number
 }
 
