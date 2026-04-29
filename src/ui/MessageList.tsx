@@ -29,7 +29,7 @@ function MessageBlock({ message }: { message: DisplayMessage }) {
   switch (message.role) {
     case 'user':
       return (
-        <Box marginTop={1} marginBottom={0}>
+        <Box marginTop={1} marginBottom={1}>
           <Text color={theme.primary} bold>❯ </Text>
           <Text color={theme.text}>{message.text}</Text>
         </Box>
