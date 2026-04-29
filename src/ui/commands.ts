@@ -134,18 +134,19 @@ export function handleSlashCommand(
       }
       return true
 
-    case '/help':
-      info([
-        'commands:',
-        '  /model <name>     switch model (keeps conversation)',
-        '  /teach <rule>     teach the model a rule (persisted)',
-        '  /rules            show learned rules',
-        '  /forget <n>       forget rule n',
-        '  /max-tools <n>    set max tools',
-        '  /help             this message',
-        '  /exit             quit',
-      ].join('\n'))
+    case '/help': {
+      // derived from SLASH_COMMANDS so it cannot drift when commands are added
+      const lines = ['commands:']
+      for (const c of SLASH_COMMANDS) {
+        const left = c.args ? `${c.name} ${c.args}` : c.name
+        lines.push(`  ${left.padEnd(22)} ${c.desc}`)
+      }
+      lines.push('')
+      lines.push('shell escape:')
+      lines.push('  !<cmd>                 run <cmd> in the shell (output stays here, model never sees it)')
+      info(lines.join('\n'))
       return true
+    }
 
     case '/remember':
       if (!args) {
