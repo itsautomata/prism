@@ -10,6 +10,7 @@ import type { ToolSchema } from '../types/index.js'
 export interface ToolResult {
   content: string
   isError?: boolean
+  userDenied?: boolean
 }
 
 export interface ToolContext {

@@ -203,6 +203,16 @@ export async function* query(options: QueryOptions): AsyncGenerator<QueryEvent> 
       toolResults.push(result)
     }
 
+    // user explicitly denied a permission prompt. treat as a clean abort,
+    // not as a tool error. push the denial result so the model sees it on
+    // the next user-initiated turn, then exit. no recovery, no nudging.
+    const userDenied = toolResults.some(r => r.userDenied)
+    if (userDenied) {
+      messages.push({ role: 'user', content: toolResults })
+      yield { type: 'done', reason: 'user_denied', turnCount }
+      return
+    }
+
     // append tool results as user message
     const hasErrors = toolResults.some(r => r.isError)
     const hasEmptyResults = toolResults.some(r => {

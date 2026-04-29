@@ -30,6 +30,13 @@ export interface ToolResultBlock {
   toolUseId: string
   content: string | ContentBlock[]
   isError?: boolean
+  /**
+   * true when this result is the consequence of the user explicitly denying
+   * a permission prompt. distinguishes "model did wrong, retry" (isError) from
+   * "user said no, stop" (userDenied). engine treats userDenied as a clean
+   * abort signal, no recovery flow.
+   */
+  userDenied?: boolean
 }
 
 export interface ThinkingBlock {

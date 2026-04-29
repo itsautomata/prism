@@ -97,6 +97,7 @@ async function* runConcurrent(
       toolUseId: result.toolUseId,
       content: result.result.content,
       isError: result.result.isError,
+      userDenied: result.result.userDenied,
     }
   }
 }
@@ -114,6 +115,7 @@ async function* runSerial(
       toolUseId: result.toolUseId,
       content: result.result.content,
       isError: result.result.isError,
+      userDenied: result.result.userDenied,
     }
   }
 }
@@ -220,6 +222,7 @@ async function executeToolCall(
         result: {
           content: `permission denied by user`,
           isError: true,
+          userDenied: true,
         },
       }
     }
