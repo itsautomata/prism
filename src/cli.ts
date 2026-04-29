@@ -17,7 +17,7 @@ import { render } from 'ink'
 import { App } from './ui/App.js'
 import { OllamaProvider } from './providers/ollama.js'
 import { OpenRouterProvider } from './providers/openrouter.js'
-import { BashTool, ReadTool, EditTool, WriteTool, GlobTool, GrepTool, AgentTool, configureAgentTool, WebFetchTool } from './tools/index.js'
+import { BashTool, ReadTool, EditTool, WriteTool, GlobTool, GrepTool, AgentTool, configureAgentTool, WebFetchTool, WebSearchTool } from './tools/index.js'
 import { loadConfig, initConfig, getConfigPath } from './config/config.js'
 import { createSession, findLastSession, listSessions, loadSession } from './sessions/store.js'
 import { allFlagTokens, complete, valueTakingFlagTokens } from './completion/spec.js'
@@ -287,7 +287,7 @@ async function main() {
   }
 
   const capabilities = provider.getCapabilities()
-  const tools = [BashTool, ReadTool, EditTool, WriteTool, GlobTool, GrepTool, AgentTool, WebFetchTool]
+  const tools = [BashTool, ReadTool, EditTool, WriteTool, GlobTool, GrepTool, AgentTool, WebFetchTool, WebSearchTool]
 
   // configure Agent tool with current provider (agents share it)
   configureAgentTool(provider, model, tools)
