@@ -40,8 +40,11 @@ const INTERNAL_PREFIXES = [
   '[session summary]',
   '[earlier conversation was compressed',
   'the previous tool returned',
+  'the previous tool call in this turn errored',
   'the search returned no results',
   '[recovery agent diagnosis]',
+  'using the tool results above, answer the user',
+  '[user ran in shell:',
 ]
 
 function rebuildDisplayMessages(messages?: Message[]): DisplayMessage[] {
