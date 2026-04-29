@@ -143,7 +143,7 @@ export function App({ provider: initProvider, model: initModel, tools, capabilit
     try {
       for await (const event of query({
         provider, model, systemPrompt: getSystemPrompt(), tools, messages,
-        maxTurns: 5, askPermission, signal: controller.signal,
+        maxTurns: 50, askPermission, signal: controller.signal,
       })) {
         switch (event.type) {
           case 'text':
