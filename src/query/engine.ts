@@ -72,6 +72,7 @@ export async function* query(options: QueryOptions): AsyncGenerator<QueryEvent> 
 
   let turnCount = 0
   let consecutiveErrors = 0
+  let consecutiveEmptyTurns = 0
 
   while (true) {
     // check abort
@@ -154,6 +155,32 @@ export async function* query(options: QueryOptions): AsyncGenerator<QueryEvent> 
     const toolUseBlocks = assistantContent.filter(
       (b): b is ToolUseBlock => b.type === 'tool_use'
     )
+
+    const hasText = assistantContent.some(
+      b => b.type === 'text' && b.text.trim().length > 0
+    )
+
+    // empty-turn nudge: the model returned nothing (no text, no tool calls).
+    // common after weaker models run tools but fail to synthesize on the next
+    // turn. nudge them once or twice; cap to prevent infinite loops.
+    if (toolUseBlocks.length === 0 && !hasText) {
+      if (consecutiveEmptyTurns >= 2) {
+        yield { type: 'done', reason: 'empty_turn_cap', turnCount }
+        return
+      }
+      consecutiveEmptyTurns++
+      messages.push({
+        role: 'user',
+        content: [{
+          type: 'text',
+          text: `using the tool results above, answer the user's previous request directly. no apology, no preamble.`,
+        }],
+      })
+      turnCount++
+      continue
+    }
+    // any content → reset the empty counter
+    consecutiveEmptyTurns = 0
 
     // no tool calls → done
     if (toolUseBlocks.length === 0 || stopReason !== 'tool_use') {
