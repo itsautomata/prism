@@ -25,8 +25,9 @@ export class ForbiddenPortError extends FetchError {
 }
 
 export class ForbiddenIpError extends FetchError {
-  constructor(url: string, public readonly ip: string) {
-    super(url, `ip blocked (private/loopback/reserved range): ${ip}`)
+  constructor(url: string, public readonly ip: any) {
+    const ipStr = typeof ip === 'string' ? ip : JSON.stringify(ip)
+    super(url, `ip blocked (private/loopback/reserved range): ${ipStr}`)
     this.name = 'ForbiddenIpError'
   }
 }

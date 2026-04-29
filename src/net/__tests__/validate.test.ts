@@ -137,4 +137,15 @@ describe('validateIp', () => {
       expect((e as ForbiddenIpError).url).toBe(URL)
     }
   })
+
+  // regression: a public azure IP (52.x) was incorrectly reported as blocked
+  // because safeFetch's pinning lookup received an array form from got and
+  // passed it as `address` directly. the underlying validator must see strings;
+  // arrays are an upstream-callsite bug. asserting here that public azure
+  // ranges (at least the resolved sample that triggered the bug) pass the
+  // validator cleanly when given a plain string.
+  it('accepts public azure-range addresses as plain strings', () => {
+    expect(() => validateIp(URL, '52.142.124.215', blocked)).not.toThrow()
+    expect(() => validateIp(URL, '20.0.0.1', blocked)).not.toThrow()
+  })
 })

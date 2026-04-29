@@ -52,8 +52,12 @@ export function validateIp(url: string, ip: string, blockedRanges: readonly stri
     if (cidr[0].kind() !== checkKind) continue
     // the kind-equality check above narrows enough at runtime; TS can't follow,
     // hence the cast. branches are exhaustive: kinds match → match() is valid.
-    if ((checkAddr as ipaddr.IPv4).match(cidr as [ipaddr.IPv4, number])) {
-      throw new ForbiddenIpError(url, ip)
+    const isMatch = checkAddr.kind() === 'ipv4' 
+      ? (checkAddr as ipaddr.IPv4).match(cidr as [ipaddr.IPv4, number])
+      : (checkAddr as ipaddr.IPv6).match(cidr as [ipaddr.IPv6, number]);
+
+    if (isMatch) {
+      throw new ForbiddenIpError(url, ip);
     }
   }
 }

@@ -52,15 +52,28 @@ export async function safeFetch(rawUrl: string, policy: FetchPolicy): Promise<Sa
   // so the address we validate is the address used to open the socket — no
   // separate "validate then connect" gap. invoked again on every redirect.
   const pinningLookup: OptionsInit['dnsLookup'] = (hostname, options, cb: any) => {
-    // node's dns.lookup overloads: (hostname, options, cb) | (hostname, cb)
-    const optsArg = typeof options === 'function' ? {} : options
+    // node's dns.lookup overloads: (hostname, options, cb) | (hostname, cb).
+    // when options.all === true the callback receives an *array* of
+    // {address, family} objects — got 14+ uses this form to pick from multiple
+    // candidates. we must validate every candidate; a hostile DNS answering
+    // [public, internal] would otherwise let internal slip through if got
+    // chose that one. validating each closes that.
+    const optsArg = typeof options === 'function' ? {} : (options || {})
     const cbArg = typeof options === 'function' ? options : cb
-    dnsLookup(hostname, optsArg, (err, address, family) => {
+    dnsLookup(hostname, optsArg, (err, addressOrList: any, family) => {
       if (err) return cbArg(err)
       try {
-        validateIp(rawUrl, address as string, policy.blockedIpRanges)
-        lastResolvedIp = address as string
-        cbArg(null, address, family)
+        if (Array.isArray(addressOrList)) {
+          for (const entry of addressOrList) {
+            validateIp(rawUrl, entry.address, policy.blockedIpRanges)
+          }
+          if (addressOrList.length > 0) lastResolvedIp = addressOrList[0].address
+          cbArg(null, addressOrList)
+        } else {
+          validateIp(rawUrl, addressOrList, policy.blockedIpRanges)
+          lastResolvedIp = addressOrList
+          cbArg(null, addressOrList, family)
+        }
       } catch (e) {
         // wrap so node's dns layer surfaces our error to got intact
         cbArg(e as NodeJS.ErrnoException)
