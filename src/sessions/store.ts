@@ -70,29 +70,40 @@ export function loadSession(id: string): Session | null {
 }
 
 /**
- * find the most recent session for a given cwd.
+ * load every valid session from disk, sorted by updatedAt descending.
+ * sorting by `updatedAt` (not filename) tolerates non-iso ids — orphaned
+ * test fixtures or hand-named sessions don't get to jump the queue just
+ * because their filename sorts after a digit.
  */
-export function findLastSession(cwd: string): Session | null {
+function loadAllSorted(): Session[] {
   ensureDir()
 
-  const files = readdirSync(SESSIONS_DIR)
-    .filter(f => f.endsWith('.json'))
-    .sort()
-    .reverse()
+  const files = readdirSync(SESSIONS_DIR).filter(f => f.endsWith('.json'))
+  const sessions: Session[] = []
 
   for (const file of files) {
     try {
-      const session: Session = JSON.parse(
-        readFileSync(join(SESSIONS_DIR, file), 'utf-8')
-      )
-      if (session.cwd === cwd && session.messages.length > 0) {
-        return session
-      }
+      sessions.push(JSON.parse(readFileSync(join(SESSIONS_DIR, file), 'utf-8')))
     } catch {
       continue
     }
   }
 
+  // missing / malformed updatedAt sorts to the bottom (treated as epoch 0)
+  return sessions.sort((a, b) => {
+    const ta = Date.parse(a.updatedAt) || 0
+    const tb = Date.parse(b.updatedAt) || 0
+    return tb - ta
+  })
+}
+
+/**
+ * find the most recent session for a given cwd.
+ */
+export function findLastSession(cwd: string): Session | null {
+  for (const session of loadAllSorted()) {
+    if (session.cwd === cwd && session.messages.length > 0) return session
+  }
   return null
 }
 
@@ -100,26 +111,5 @@ export function findLastSession(cwd: string): Session | null {
  * list all sessions, most recent first.
  */
 export function listSessions(limit = 10): Session[] {
-  ensureDir()
-
-  const files = readdirSync(SESSIONS_DIR)
-    .filter(f => f.endsWith('.json'))
-    .sort()
-    .reverse()
-    .slice(0, limit)
-
-  const sessions: Session[] = []
-
-  for (const file of files) {
-    try {
-      const session: Session = JSON.parse(
-        readFileSync(join(SESSIONS_DIR, file), 'utf-8')
-      )
-      sessions.push(session)
-    } catch {
-      continue
-    }
-  }
-
-  return sessions
+  return loadAllSorted().slice(0, limit)
 }

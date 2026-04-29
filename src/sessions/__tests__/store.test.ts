@@ -14,6 +14,7 @@ vi.mock('os', async () => {
 })
 
 import { createSession, saveSession, loadSession, findLastSession, listSessions } from '../store.js'
+import type { Session } from '../types.js'
 
 const SESSIONS_DIR = join(TEST_HOME, '.prism', 'sessions')
 
@@ -226,6 +227,33 @@ describe('findLastSession', () => {
 
     const found = findLastSession('/cwd')
     expect(found!.id).toBe(s.id)
+  })
+
+  // regression: a non-iso filename like `test-session.json` sorts after any
+  // timestamp filename (lex: 't' > '2'), which used to make it win over fresher
+  // sessions in the same cwd. sort-by-updatedAt should fix this.
+  it('does not let a non-iso filename outrank a newer iso-id session', async () => {
+    mkdirSync(SESSIONS_DIR, { recursive: true })
+    const stale: Session = {
+      id: 'test-session',
+      model: 'test-model',
+      provider: 'p',
+      cwd: '/cwd',
+      createdAt: '2026-04-26T10:14:42.424Z',
+      updatedAt: '2026-04-26T10:14:42.424Z',
+      messages: [{ role: 'user', content: [{ type: 'text', text: 'old' }] }],
+    }
+    writeFileSync(join(SESSIONS_DIR, 'test-session.json'), JSON.stringify(stale))
+
+    await pause(10)
+
+    const fresh = createSession('m', 'p', '/cwd')
+    fresh.messages = [{ role: 'user', content: [{ type: 'text', text: 'new' }] }]
+    saveSession(fresh)
+
+    const found = findLastSession('/cwd')
+    expect(found!.id).toBe(fresh.id)
+    expect(listSessions()[0].id).toBe(fresh.id)
   })
 })
 
