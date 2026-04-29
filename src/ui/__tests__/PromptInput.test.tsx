@@ -133,9 +133,13 @@ describe('PromptInput: slash autocomplete', () => {
     // /mo matches /model (which has args)
     stdin.write(KEY.tab)
     await tick()
+    // type an arg char to expose the trailing space in the buffer.
+    // (lastFrame trims trailing whitespace per line, so the bare space is invisible
+    // unless followed by a non-space char.)
+    stdin.write('x')
+    await tick(20)
     const frame = lastFrame() ?? ''
-    // buffer should now read /model<space> (visible portion of the input row)
-    expect(frame).toMatch(/\/model\s/)
+    expect(frame).toMatch(/\/model\sx/)
   })
 
   it('tab completes to just the name with no trailing space if no args', async () => {
