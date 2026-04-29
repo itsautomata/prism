@@ -147,18 +147,6 @@ for ambiguous tasks where the wrong opening move costs time. type `/plan`, ask t
 
 ![prism plan mode](https://raw.githubusercontent.com/itsautomata/prism/main/assets/plan_mode.png)
 
-```
-❯ /plan
-  plan mode: on. the model will research and propose a plan.
-
-❯ refactor the auth flow to use JWT instead of sessions
-  ◆ here's my plan:
-  1. read src/auth/* to map current session usage
-  2. ...
-
-❯ /exec-plan
-  plan mode: off. executing.
-```
 
 while in plan mode, the banner shows an amber `plan mode` indicator. the model is told to research with read-only tools and write a markdown plan, not to call Edit, Write, or destructive Bash. the plan stays in conversation context so the model can execute against it after `/exec-plan`.
 
