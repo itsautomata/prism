@@ -1,21 +1,51 @@
 {
-  "name": "prism",
+  "name": "@itsautomata/prism",
   "version": "0.1.0",
-  "private": true,
-  "description": "local-first AI assistant",
+  "description": "local-first AI coding assistant, runs against ollama or openrouter",
   "type": "module",
+  "license": "MIT",
+  "author": "Automata",
+  "homepage": "https://github.com/itsautomata/prism#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/itsautomata/prism.git"
+  },
+  "bugs": {
+    "url": "https://github.com/itsautomata/prism/issues"
+  },
+  "keywords": [
+    "cli",
+    "ai",
+    "ollama",
+    "openrouter",
+    "agent",
+    "tools",
+    "local-first",
+    "coding-assistant"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
   "bin": {
-    "prism": "./bin/prism"
+    "prism": "./dist/cli.js"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "scripts": {
-    "build": "tsup src/cli.ts --format esm --dts",
+    "build": "tsup && chmod +x dist/cli.js",
     "dev": "tsx src/cli.ts",
     "check": "tsc --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "prepublishOnly": "npm run check && npm test && npm run build"
   },
   "dependencies": {
-    "@types/react": "^19.2.14",
     "cheerio": "^1.2.0",
     "got": "^15.0.3",
     "gpt-tokenizer": "^3.4.0",
@@ -31,6 +61,7 @@
   "devDependencies": {
     "@types/cheerio": "^0.22.35",
     "@types/node": "^22.0.0",
+    "@types/react": "^19.2.14",
     "@types/turndown": "^5.0.6",
     "ink-testing-library": "^4.0.0",
     "tsup": "^8.0.0",

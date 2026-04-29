@@ -102,19 +102,6 @@ describe('CLI', () => {
 
 })
 
-describe('bin/prism', () => {
-  it('resolves its own path and runs', () => {
-    const output = execSync('./bin/prism --help', {
-      cwd: PRISM_DIR,
-      encoding: 'utf-8',
-      timeout: 5000,
-      env: { ...process.env, NO_COLOR: '1' },
-    }).trim()
-    expect(output).toContain('prism')
-    expect(output).toContain('usage')
-  })
-})
-
 import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 
