@@ -11,23 +11,19 @@ Prism is an open source coding assistant that runs locally on your machine throu
 
 ## quick start
 
-requires Ollama v0.20.2+ for proper tool calling, and Node.js 20+.
+requires Node.js 20+.
+
+```bash
+npm install -g @itsautomata/prism
+prism
+```
+
+to run local (free, via ollama, requires Ollama v0.20.2+ for proper tool calling):
 
 ```bash
 brew install ollama
 ollama serve
 ollama pull deepseek-r1:14b
-
-npm install -g @itsautomata/prism
-
-prism
-```
-
-if `prism` is "command not found" after install, your npm global bin isn't on PATH. find it with `npm config get prefix`, then add `<that>/bin` to your shell rc:
-
-```bash
-echo "export PATH=\"$(npm config get prefix)/bin:\$PATH\"" >> ~/.zshrc   # or ~/.bashrc
-exec $SHELL
 ```
 
 ## shell completion
