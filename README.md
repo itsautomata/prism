@@ -1,6 +1,6 @@
 # prism
 
-**free, local-first AI coding assistant**
+**model agnostic, local-first AI coding assistant**
 
 Prism is an open source coding assistant that runs locally on your machine through Ollama, or cloud through OpenRouter (300+ models).
 
@@ -97,11 +97,11 @@ sessions saved at `~/.prism/sessions/`.
 | Write | create or overwrite files |
 | Glob | find files by pattern |
 | Grep | search file contents |
-| Agent | spawn subagents for parallel work |
+| Agent | spawn read-only subagents for parallel research |
 
 ## permissions
 
-write operations ask before executing. read operations auto-allow.
+write operations ask before executing. read operations auto-allow. subagents inherit read-only access; they cannot escalate to write operations.
 
 ```
 ◆ Bash wants to: run: git push
