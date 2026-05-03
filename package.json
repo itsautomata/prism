@@ -43,10 +43,11 @@
     "check": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
+    "link:dev": "npm run build && npm link",
+    "unlink:dev": "npm unlink -g @itsautomata/prism && npm install -g @itsautomata/prism",
     "prepublishOnly": "npm run check && npm test && npm run build"
   },
   "dependencies": {
-    "@itsautomata/prism": "^0.1.1",
     "cheerio": "^1.2.0",
     "got": "^15.0.3",
     "gpt-tokenizer": "^3.4.0",
