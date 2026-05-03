@@ -128,13 +128,20 @@ function seedSession(home: string, opts: { id?: string; model?: string; provider
   for (let i = 0; i < (opts.turns ?? 1); i++) {
     messages.push({ role: 'user', content: [{ type: 'text', text: `msg ${i}` }] })
   }
+  // when an explicit id is provided, derive updatedAt from it so tests that
+  // seed multiple sessions back-to-back get distinct, deterministic timestamps
+  // (sort by updatedAt is the production order; tying it to the id keeps the
+  // helper aligned with the order tests want to assert against).
+  const updatedAt = opts.id
+    ? opts.id.replace(/T(\d\d)-(\d\d)-(\d\d)-(\d{3})/, 'T$1:$2:$3.$4') + 'Z'
+    : new Date().toISOString()
   const session = {
     id,
     model: opts.model ?? 'qwen3:14b',
     provider: opts.provider ?? 'ollama',
     cwd: opts.cwd ?? '/tmp/test-cwd',
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
+    createdAt: updatedAt,
+    updatedAt,
     messages,
   }
   writeFileSync(join(dir, `${id}.json`), JSON.stringify(session, null, 2), 'utf-8')
