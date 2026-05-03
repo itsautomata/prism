@@ -7,7 +7,15 @@
 import type { ProviderBridge, Message, ToolSchema } from '../types/index.js'
 import type { Tool } from '../tools/Tool.js'
 import { toolToSchema } from '../tools/Tool.js'
-import { runToolCalls } from '../tools/orchestration.js'
+import { runToolCalls, type PermissionResolver } from '../tools/orchestration.js'
+
+/**
+ * subagents can't escalate. read-only tools auto-allow as in the main loop;
+ * any write attempt gets denied here without prompting the user, and the
+ * subagent sees an `isError` result that it can adapt to or report back.
+ * the parent (which has the real permission system) decides what to do.
+ */
+const denySubagentWrites: PermissionResolver = async () => 'deny'
 
 export type AgentProgressEvent =
   | { type: 'thinking'; agent: string; text: string }
@@ -139,9 +147,10 @@ export async function runAgent(task: AgentTask): Promise<AgentResult> {
       return { description, output: finalOutput, turnCount, success: true }
     }
 
-    // execute tools (no permission prompts for subagents — auto-allow)
+    // execute tools. subagents can't escalate: read-only auto-allows, writes
+    // auto-deny without prompting (see denySubagentWrites at top of file).
     const toolResults: import('../types/index.js').ToolResultBlock[] = []
-    for await (const result of runToolCalls(toolUseBlocks, tools, context)) {
+    for await (const result of runToolCalls(toolUseBlocks, tools, context, denySubagentWrites)) {
       const content = typeof result.content === 'string' ? result.content : JSON.stringify(result.content)
       emit({
         type: 'tool_result',
