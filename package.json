@@ -1,6 +1,6 @@
 {
   "name": "@itsautomata/prism",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "local-first AI coding assistant, runs against ollama or openrouter",
   "type": "module",
   "license": "MIT",
