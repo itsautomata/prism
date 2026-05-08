@@ -98,6 +98,8 @@ sessions saved at `~/.prism/sessions/`.
 | Glob | find files by pattern |
 | Grep | search file contents |
 | Agent | spawn read-only subagents for parallel research |
+| WebFetch | fetch and convert web pages to markdown |
+| WebSearch | query a search backend, return ranked results |
 
 ## permissions
 
@@ -197,11 +199,10 @@ git clone https://github.com/itsautomata/prism.git
 cd prism
 npm install
 npm run dev               # run from source via tsx
-npm run build             # produce dist/cli.js (required before global install from this dir)
+npm run build             # produce dist/cli.js (required before global install from the local dir)
 npm install -g .          # symlink your local build as the global `prism`
 ```
 
-`dist/` is git-ignored, so `npm run build` is required before any `npm install -g .` in a fresh clone.
 
 ## tests (on going)
 
@@ -215,12 +216,13 @@ covering:
 - CLI parsing
 - sessions and `--resume`
 - shell completion
-- slash command autocomplete
+- slash command autocomplete and prompt input
 - plan mode dispatch
 - memo persistence (per-project memory)
 - git context detection
-- token counting
-- tools and permissions
+- context compaction (token counting + summary fallback)
+- tools, permissions, subagent permission contract
+- web fetching
 - `!cmd` shell escape
 
 
