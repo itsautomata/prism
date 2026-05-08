@@ -6,6 +6,15 @@
 
 import type { ProviderBridge, Message } from '../types/index.js'
 
+/**
+ * outcome of a summarize attempt. callers must handle both branches.
+ * silent fallback (returning the original messages) is the trap that lets
+ * the engine re-trigger compaction every turn until maxTurns aborts.
+ */
+export type SummarizeResult =
+  | { ok: true; messages: Message[] }
+  | { ok: false; reason: string }
+
 const SUMMARY_PROMPT = `this summary replaces the original session messages. dropped or inaccurate information is permanently lost. prioritize accuracy over brevity.
 
 extract from the conversation above:
@@ -31,8 +40,10 @@ export async function summarizeOldTurns(
   provider: ProviderBridge,
   model: string,
   keepRecent: number = 10,
-): Promise<Message[]> {
-  if (messages.length <= keepRecent + 2) return messages
+): Promise<SummarizeResult> {
+  if (messages.length <= keepRecent + 2) {
+    return { ok: true, messages }
+  }
 
   const oldMessages = messages.slice(0, -keepRecent)
   const recentMessages = messages.slice(-keepRecent)
@@ -72,7 +83,9 @@ export async function summarizeOldTurns(
       .join(' ')
       .trim()
 
-    if (!summaryText) return messages
+    if (!summaryText) {
+      return { ok: false, reason: 'empty summary returned' }
+    }
 
     const summary: Message = {
       role: 'user',
@@ -82,8 +95,9 @@ export async function summarizeOldTurns(
       }],
     }
 
-    return [summary, ...recentMessages]
-  } catch {
-    return messages
+    return { ok: true, messages: [summary, ...recentMessages] }
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err)
+    return { ok: false, reason }
   }
 }

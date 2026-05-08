@@ -73,6 +73,10 @@ export async function* query(options: QueryOptions): AsyncGenerator<QueryEvent> 
   let turnCount = 0
   let consecutiveErrors = 0
   let consecutiveEmptyTurns = 0
+  // session-sticky: once summarize fails, stop retrying it. fall back to snip
+  // for the remainder of the session. avoids burning N model calls on the
+  // same compaction failure when the user has already crossed the 80% threshold.
+  let summarizeBlocked = false
 
   while (true) {
     // check abort
@@ -94,8 +98,22 @@ export async function* query(options: QueryOptions): AsyncGenerator<QueryEvent> 
     yield { type: 'token_update', used: tokenCount, max: capabilities.maxContextTokens, formatted: `${formatTokens(tokenCount)} / ${formatTokens(capabilities.maxContextTokens)}` }
 
     if (tokenCount > capabilities.maxContextTokens * 0.8) {
-      const compressed = await summarizeOldTurns(messages, provider, model)
-      messages.splice(0, messages.length, ...compressed)
+      let compacted = false
+      if (!summarizeBlocked) {
+        const result = await summarizeOldTurns(messages, provider, model)
+        if (result.ok) {
+          messages.splice(0, messages.length, ...result.messages)
+          compacted = true
+        } else {
+          // surface the degradation once; subsequent turns just snip silently.
+          summarizeBlocked = true
+          yield { type: 'error', error: `compaction degraded to snip: ${result.reason}` }
+        }
+      }
+      if (!compacted) {
+        const snipped = snipOldTurns(messages)
+        messages.splice(0, messages.length, ...snipped)
+      }
     } else if (tokenCount > capabilities.maxContextTokens * 0.6) {
       const snipped = snipOldTurns(messages)
       messages.splice(0, messages.length, ...snipped)
