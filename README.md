@@ -203,6 +203,10 @@ npm run build             # produce dist/cli.js (required before global install 
 npm install -g .          # symlink your local build as the global `prism`
 ```
 
+you can run prism on itself to make itself better, and shape it to your workflow
+
+![apple](https://raw.githubusercontent.com/itsautomata/prism/main/assets/apple_eating_itself.gif)
+
 
 ## tests (on going)
 
