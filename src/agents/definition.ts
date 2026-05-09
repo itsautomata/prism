@@ -43,6 +43,22 @@ export interface Agent {
 }
 
 /**
+ * defaults applied by the agent file loader when a field is omitted from the
+ * frontmatter. only fields the user can reasonably leave out have entries
+ * here; `name` is always derived from the filename, and `systemPrompt` is the
+ * markdown body (an empty body is a load error, not a default).
+ *
+ * this constant should be aligned with the Agent type: any new optional field on
+ * Agent should land here too so the loader stays in lockstep.
+ */
+export const AGENT_DEFAULTS = {
+  description: (name: string) => `user-defined agent ${name}`,
+  tools: '*' as const,
+  permissions: 'deny-writes' as const satisfies PermissionPolicy,
+  maxTurns: 5,
+} as const
+
+/**
  * default system prompt used by the built-in agents. user-defined agents
  * supply their own systemPrompt via the markdown body of their definition
  * file and never see this constant.
