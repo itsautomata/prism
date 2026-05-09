@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync, existsSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { runAgent, type AgentProgressEvent } from '../runner.js'
+import { DEFAULT_AGENT } from '../definition.js'
 import { ReadTool, WriteTool, BashTool } from '../../tools/index.js'
 import type {
   ProviderBridge,
@@ -97,7 +98,7 @@ describe('runAgent permission policy', () => {
       textTurn('reporting back: could not write.'),
     ])
 
-    const result = await runAgent({
+    const result = await runAgent(DEFAULT_AGENT, {
       prompt: 'write hi to a file',
       description: 'write attempt',
       provider,
@@ -129,7 +130,7 @@ describe('runAgent permission policy', () => {
       textTurn('summary: greeting present.'),
     ])
 
-    await runAgent({
+    await runAgent(DEFAULT_AGENT, {
       prompt: 'read the file',
       description: 'read attempt',
       provider,
@@ -151,7 +152,7 @@ describe('runAgent permission policy', () => {
       textTurn('diagnosis: command ran.'),
     ])
 
-    await runAgent({
+    await runAgent(DEFAULT_AGENT, {
       prompt: 'run echo',
       description: 'recovery diagnosis',
       provider,

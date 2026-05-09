@@ -8,6 +8,7 @@
 import { z } from 'zod'
 import { buildTool, type ToolResult, type ToolContext } from './Tool.js'
 import { runAgent, type AgentProgressEvent } from '../agents/runner.js'
+import { DEFAULT_AGENT } from '../agents/definition.js'
 import type { ProviderBridge } from '../types/index.js'
 import type { Tool } from './Tool.js'
 
@@ -51,7 +52,7 @@ export const AgentTool = buildTool<AgentInput>({
       return { content: 'error: Agent tool not configured', isError: true }
     }
 
-    const result = await runAgent({
+    const result = await runAgent(DEFAULT_AGENT, {
       prompt: input.prompt,
       description: input.description,
       provider: _provider,

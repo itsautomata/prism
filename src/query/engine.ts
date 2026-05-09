@@ -21,6 +21,7 @@ import { toolToSchema } from '../tools/Tool.js'
 import { runToolCalls, findTool, type PermissionResolver } from '../tools/orchestration.js'
 import { countConversationTokens, formatTokens } from '../compact/tokens.js'
 import { runAgent } from '../agents/runner.js'
+import { RECOVERY_AGENT } from '../agents/definition.js'
 import { trimOldToolResults } from '../compact/trimmer.js'
 import { snipOldTurns } from '../compact/snip.js'
 import { summarizeOldTurns } from '../compact/summarize.js'
@@ -386,7 +387,7 @@ async function runRecoveryAgent(opts: {
   errorOutput: string
   cwd: string
 }): Promise<string> {
-  const result = await runAgent({
+  const result = await runAgent(RECOVERY_AGENT, {
     description: 'diagnose error',
     prompt: `a tool call failed. diagnose why and suggest a specific fix.
 
@@ -399,8 +400,9 @@ check if relevant files/paths exist. then report:
 2. the fix (one actionable step)`,
     provider: opts.provider,
     model: opts.model,
-    tools: opts.tools.filter(t => t.name !== 'Agent'),
-    maxTurns: 3,
+    // runAgent filters Agent out internally so subagents cannot nest.
+    // turn cap and permission policy come from RECOVERY_AGENT.
+    tools: opts.tools,
     signal: opts.signal,
   })
 
