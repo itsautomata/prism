@@ -162,4 +162,62 @@ describe('PromptInput: slash autocomplete', () => {
     await tick()
     expect(onSubmit).toHaveBeenCalledWith('/clear')
   })
+
+  it('enter on a partial match commits the highlighted command without submitting', async () => {
+    const { stdin } = render(<PromptInput onSubmit={onSubmit} isLoading={false} />)
+    // /cl matches /clear. enter parity with tab: insert /clear, do not submit yet.
+    stdin.write('/cl')
+    await tick()
+    stdin.write(KEY.enter)
+    await tick()
+    expect(onSubmit).not.toHaveBeenCalled()
+  })
+
+  it('second enter submits a buffer that already matches the highlighted command', async () => {
+    const { stdin } = render(<PromptInput onSubmit={onSubmit} isLoading={false} />)
+    // first enter commits /cl -> /clear; second enter submits.
+    stdin.write('/cl')
+    await tick()
+    stdin.write(KEY.enter)
+    await tick()
+    stdin.write(KEY.enter)
+    await tick()
+    expect(onSubmit).toHaveBeenCalledWith('/clear')
+  })
+
+  it('enter on a partial arg-taking match commits without submitting', async () => {
+    const { stdin, lastFrame } = render(<PromptInput onSubmit={onSubmit} isLoading={false} />)
+    // /tea matches /teach (which takes an arg). enter inserts '/teach ' and waits.
+    stdin.write('/tea')
+    await tick()
+    stdin.write(KEY.enter)
+    await tick()
+    expect(onSubmit).not.toHaveBeenCalled()
+    // type a char to expose the trailing space (lastFrame strips trailing whitespace).
+    stdin.write('x')
+    await tick(20)
+    const frame = lastFrame() ?? ''
+    expect(frame).toMatch(/\/teach\sx/)
+  })
+
+  it('tab on a partial match commits without submitting', async () => {
+    const { stdin } = render(<PromptInput onSubmit={onSubmit} isLoading={false} />)
+    stdin.write('/cl')
+    await tick()
+    stdin.write(KEY.tab)
+    await tick()
+    expect(onSubmit).not.toHaveBeenCalled()
+  })
+
+  it('tab on a buffer that already matches is a no-op', async () => {
+    const { stdin } = render(<PromptInput onSubmit={onSubmit} isLoading={false} />)
+    stdin.write('/cl')
+    await tick()
+    stdin.write(KEY.tab)
+    await tick()
+    stdin.write(KEY.tab)
+    await tick()
+    // tab on the already-committed buffer should not submit
+    expect(onSubmit).not.toHaveBeenCalled()
+  })
 })

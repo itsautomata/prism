@@ -71,18 +71,27 @@ export const PromptInput = memo(function PromptInput({ onSubmit, isLoading, inPl
         setSelectedHintIdx(prev => Math.min(matches.length - 1, prev + 1))
         return
       }
-      if (key.tab) {
+      // tab and enter both commit the highlighted command. neither submits.
+      // if the buffer already matches the highlighted command exactly, tab is a
+      // no-op and enter falls through to the submit handler below (so a second
+      // enter sends the committed command without burying it in the dropdown).
+      if (key.tab || key.return) {
         const selected = matches[selectedHintIdx]
         if (selected) {
-          bufferRef.current = selected.name + (selected.args ? ' ' : '')
-          cursorRef.current = bufferRef.current.length
-          flushNow()
+          const newText = selected.name + (selected.args ? ' ' : '')
+          if (bufferRef.current !== newText) {
+            bufferRef.current = newText
+            cursorRef.current = newText.length
+            flushNow()
+            return
+          }
         }
-        return
+        if (key.tab) return
+        // enter with no commit-work to do: fall through to submit
       }
     }
 
-    // enter: submit
+    // enter (no hints visible): submit the buffer as-is.
     if (key.return) {
       const text = bufferRef.current.trim()
       if (text) {
