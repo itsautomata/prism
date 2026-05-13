@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react'
+import React, { useState, useCallback, useMemo } from 'react'
 import { Box, useApp, useInput } from 'ink'
 import { Banner } from './Banner.js'
 import { MessageList, type DisplayMessage } from './MessageList.js'
@@ -12,7 +12,7 @@ import { loadProfile, type ModelProfile } from '../learning/profile.js'
 import { scanProject } from '../context/scanner.js'
 import { saveSession } from '../sessions/store.js'
 import type { Session } from '../sessions/types.js'
-import { configureAgentTool } from '../tools/agent.js'
+import { createAgentTool } from '../tools/agent.js'
 import type { AgentProgressEvent } from '../agents/runner.js'
 import { handleSlashCommand } from './commands.js'
 import { handleBashCommand } from './bash.js'
@@ -63,7 +63,7 @@ function rebuildDisplayMessages(messages?: Message[]): DisplayMessage[] {
   return display
 }
 
-export function App({ provider: initProvider, model: initModel, tools, capabilities: initCaps, session, initialMessages, projectContext: initProjectContext, memory }: AppProps) {
+export function App({ provider: initProvider, model: initModel, tools: baseTools, capabilities: initCaps, session, initialMessages, projectContext: initProjectContext, memory }: AppProps) {
   const [provider, setProvider] = useState<ProviderBridge>(initProvider)
   const [model, setModel] = useState(initModel)
   const [caps, setCaps] = useState(initCaps)
@@ -85,11 +85,16 @@ export function App({ provider: initProvider, model: initModel, tools, capabilit
   // caller that hasn't been updated yet.
   const [projectContext] = useState(() => initProjectContext ?? scanProject(process.cwd()))
   const [messages] = useState<Message[]>(() => initialMessages ? [...initialMessages] : [])
-  const toolSchemas = tools.map(t => toolToSchema(t))
 
-  // wire agent progress to display
-  useState(() => {
-    configureAgentTool(provider, model, tools, (event: AgentProgressEvent) => {
+  // Agent tool is built once with the initial runtime context bound in closure.
+  // its onProgress callback reaches into setDisplayMessages so subagent events
+  // render as they happen. constructing here (not in cli.ts) keeps the UI
+  // wiring colocated with the rest of the React state.
+  const [agentTool] = useState<Tool>(() => createAgentTool({
+    provider: initProvider,
+    model: initModel,
+    subagentTools: baseTools,
+    onProgress: (event: AgentProgressEvent) => {
       if (event.type === 'thinking') {
         setDisplayMessages(prev => {
           const last = prev[prev.length - 1]
@@ -103,8 +108,11 @@ export function App({ provider: initProvider, model: initModel, tools, capabilit
       } else if (event.type === 'tool_result') {
         setDisplayMessages(prev => [...prev, { role: 'tool_result', text: `[${event.agent}] ${event.result}`, isError: event.isError }])
       }
-    })
-  })
+    },
+  }))
+
+  const tools = useMemo(() => [...baseTools, agentTool], [baseTools, agentTool])
+  const toolSchemas = useMemo(() => tools.map(t => toolToSchema(t)), [tools])
 
   const getSystemPrompt = useCallback(() => {
     const currentCaps: ModelCapabilities = {

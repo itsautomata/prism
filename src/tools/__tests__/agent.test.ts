@@ -13,7 +13,8 @@ vi.mock('os', async () => {
   return { ...actual, homedir: () => TEST_HOME }
 })
 
-import { AgentTool, configureAgentTool } from '../agent.js'
+import { createAgentTool } from '../agent.js'
+import type { Tool } from '../Tool.js'
 import type {
   ProviderBridge,
   ProviderConfig,
@@ -59,12 +60,17 @@ function stubProvider(): ProviderBridge {
 }
 
 let projectRoot: string
+let AgentTool: Tool
 const USER_AGENTS_DIR = join(TEST_HOME, '.prism', 'agents')
 
 beforeEach(() => {
   projectRoot = mkdtempSync(join(tmpdir(), 'prism-agent-tool-project-'))
   rmSync(USER_AGENTS_DIR, { recursive: true, force: true })
-  configureAgentTool(stubProvider(), 'stub-model', [])
+  AgentTool = createAgentTool({
+    provider: stubProvider(),
+    model: 'stub-model',
+    subagentTools: [],
+  })
 })
 
 afterAll(() => {
