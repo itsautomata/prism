@@ -11,6 +11,8 @@ import type { ProjectContext } from '../context/types.js'
 import { formatContext } from '../context/inject.js'
 import type { Memory } from '../memory/inject.js'
 import { formatMemory } from '../memory/inject.js'
+import { listAgents } from '../agents/registry.js'
+import { DEFAULT_AGENT } from '../agents/definition.js'
 
 interface PromptOptions {
   capabilities: ModelCapabilities
@@ -30,6 +32,9 @@ export function buildSystemPrompt(options: PromptOptions): string {
     getTools(tools, capabilities),
     getEnvironment(cwd),
   ]
+
+  const agentsBlock = getAgents(cwd)
+  if (agentsBlock) sections.push(agentsBlock)
 
   if (projectContext) {
     sections.push(formatContext(projectContext))
@@ -160,6 +165,34 @@ function getTools(tools: ToolSchema[], capabilities: ModelCapabilities): string 
 ${toolList}
 
 Use the right tool: Read over cat, Edit over sed, Grep over grep, Glob over find.`
+}
+
+/**
+ * inject the available subagent definitions into the prompt so the model can
+ * pick a named agent rather than guessing. only fires when the project or
+ * user scope contributes at least one definition; the bare default agent is
+ * implicit to anyone reading the Agent tool's schema and listing it alone
+ * would add noise.
+ */
+function getAgents(cwd: string): string | null {
+  let agents
+  try {
+    agents = listAgents(cwd)
+  } catch {
+    return null
+  }
+
+  const extras = agents.filter(a => a.name !== DEFAULT_AGENT.name)
+  if (extras.length === 0) return null
+
+  const lines = ['# available agents', '']
+  lines.push(`${DEFAULT_AGENT.name}: ${DEFAULT_AGENT.description}`)
+  for (const a of extras) {
+    lines.push(`${a.name}: ${a.description}`)
+  }
+  lines.push('')
+  lines.push('to use one, call Agent with `agent: "<name>"`. omit `agent` for the default.')
+  return lines.join('\n')
 }
 
 function getGitGuidance(): string {
