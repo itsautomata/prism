@@ -79,6 +79,7 @@ export function App({ provider: initProvider, model: initModel, tools: baseTools
   } | null>(null)
   const [abortController, setAbortController] = useState<AbortController | null>(null)
   const [inPlanMode, setInPlanMode] = useState(false)
+  const [activeSkills, setActiveSkills] = useState<ReadonlySet<string>>(new Set())
 
   // projectContext is now passed in from cli.ts (so the user sees a startup
   // progress message during the scan). fall back to scanning here for any
@@ -119,8 +120,17 @@ export function App({ provider: initProvider, model: initModel, tools: baseTools
       ...caps,
       ...(profile.maxToolsOverride ? { maxTools: profile.maxToolsOverride } : {}),
     }
-    return buildSystemPrompt({ capabilities: currentCaps, tools: toolSchemas, cwd: process.cwd(), profile, projectContext, memory, inPlanMode })
-  }, [caps, toolSchemas, profile, memory, inPlanMode])
+    return buildSystemPrompt({
+      capabilities: currentCaps,
+      tools: toolSchemas,
+      cwd: process.cwd(),
+      profile,
+      projectContext,
+      memory,
+      inPlanMode,
+      activeSkills,
+    })
+  }, [caps, toolSchemas, profile, memory, inPlanMode, activeSkills])
 
   useInput((input, key) => {
     if (!isLoading && key.ctrl && input === 'c') { exit(); return }
@@ -239,7 +249,10 @@ export function App({ provider: initProvider, model: initModel, tools: baseTools
       const handled = handleSlashCommand(input, model, profile, setProfile, setDisplayMessages, exit, switchFn, {
         value: inPlanMode,
         set: setInPlanMode,
-      }, triggerSyntheticTurn, process.cwd())
+      }, triggerSyntheticTurn, process.cwd(), {
+        active: activeSkills,
+        setActive: setActiveSkills,
+      })
       if (handled) return
     }
 

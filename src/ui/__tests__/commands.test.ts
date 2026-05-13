@@ -69,8 +69,8 @@ describe('filterSlashCommands', () => {
     expect(filterSlashCommands('   ')).toEqual([])
   })
 
-  it('returns all 13 commands for "/" alone', () => {
-    expect(filterSlashCommands('/').length).toBe(13)
+  it('returns all 14 commands for "/" alone', () => {
+    expect(filterSlashCommands('/').length).toBe(14)
   })
 
   it('returns /max-tools and /model for "/m"', () => {
@@ -409,6 +409,84 @@ audit the target.`)
   it('/agent <name> <task> without a trigger function is a graceful no-op', () => {
     writeUserAgent('researcher', minimal())
     handleSlashCommand('/agent researcher do something', 'm', makeProfile(), spy(), setMessages, spy(), undefined, undefined, undefined, projectRoot)
+    expect(JSON.stringify(messages)).toContain('not available')
+  })
+})
+
+describe('handleSlashCommand: /skill', () => {
+  let projectRoot: string
+  let messages: any[]
+  let active: ReadonlySet<string>
+  const setMessages = (updater: any) => {
+    messages = typeof updater === 'function' ? updater(messages) : updater
+  }
+  const setActive = (next: Set<string>) => { active = next }
+
+  beforeEach(() => {
+    messages = []
+    active = new Set()
+    projectRoot = mkdtempSync(join(tmpdir(), 'prism-cmd-skill-'))
+    rmSync(`${TEST_HOME}/.prism/skills`, { recursive: true, force: true })
+  })
+
+  function writeUserSkill(name: string, body: string): void {
+    const dir = join(TEST_HOME, '.prism', 'skills')
+    mkdirSync(dir, { recursive: true })
+    writeFileSync(join(dir, `${name}.md`), body, 'utf-8')
+  }
+
+  function exampleSkill(): string {
+    return `narrow security focus for the session
+
+when active, prioritize security review of every diff and flag SSRF, injection, path traversal.`
+  }
+
+  it('/skill lists available skills with active markers', () => {
+    writeUserSkill('security', exampleSkill())
+    handleSlashCommand('/skill', 'm', makeProfile(), spy(), setMessages, spy(), undefined, undefined, undefined, projectRoot, { active, setActive })
+    const text = JSON.stringify(messages)
+    expect(text).toContain('available skills')
+    expect(text).toContain('security')
+  })
+
+  it('/skill <name> activates a skill and reports it back', () => {
+    writeUserSkill('security', exampleSkill())
+    handleSlashCommand('/skill security', 'm', makeProfile(), spy(), setMessages, spy(), undefined, undefined, undefined, projectRoot, { active, setActive })
+    expect(active.has('security')).toBe(true)
+    expect(JSON.stringify(messages)).toContain('activated')
+  })
+
+  it('/skill <name> deactivates an already-active skill (toggle)', () => {
+    writeUserSkill('security', exampleSkill())
+    active = new Set(['security'])
+    handleSlashCommand('/skill security', 'm', makeProfile(), spy(), setMessages, spy(), undefined, undefined, undefined, projectRoot, { active, setActive })
+    expect(active.has('security')).toBe(false)
+    expect(JSON.stringify(messages)).toContain('deactivated')
+  })
+
+  it('/skill <unknown> reports not found without activating', () => {
+    handleSlashCommand('/skill nope', 'm', makeProfile(), spy(), setMessages, spy(), undefined, undefined, undefined, projectRoot, { active, setActive })
+    expect(active.size).toBe(0)
+    expect(JSON.stringify(messages)).toContain('not found')
+  })
+
+  it('/skill clear deactivates everything', () => {
+    writeUserSkill('security', exampleSkill())
+    writeUserSkill('refactor', `narrow refactor focus\n\nbody.`)
+    active = new Set(['security', 'refactor'])
+    handleSlashCommand('/skill clear', 'm', makeProfile(), spy(), setMessages, spy(), undefined, undefined, undefined, projectRoot, { active, setActive })
+    expect(active.size).toBe(0)
+    expect(JSON.stringify(messages)).toContain('all skills deactivated')
+  })
+
+  it('/skill clear when nothing is active is a graceful no-op', () => {
+    handleSlashCommand('/skill clear', 'm', makeProfile(), spy(), setMessages, spy(), undefined, undefined, undefined, projectRoot, { active, setActive })
+    expect(JSON.stringify(messages)).toContain('no skills were active')
+  })
+
+  it('/skill without a state bag is a graceful no-op (build-time safety)', () => {
+    writeUserSkill('security', exampleSkill())
+    handleSlashCommand('/skill security', 'm', makeProfile(), spy(), setMessages, spy(), undefined, undefined, undefined, projectRoot)
     expect(JSON.stringify(messages)).toContain('not available')
   })
 })

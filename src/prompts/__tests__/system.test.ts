@@ -83,3 +83,50 @@ you are the researcher.`)
     expect(prompt).toContain('researcher:')
   })
 })
+
+describe('buildSystemPrompt: active skills section', () => {
+  function writeUserSkill(name: string, body: string): void {
+    const dir = join(TEST_HOME, '.prism', 'skills')
+    mkdirSync(dir, { recursive: true })
+    writeFileSync(join(dir, `${name}.md`), body, 'utf-8')
+  }
+
+  it('omits the section when no skills are active', () => {
+    writeUserSkill('security', `security focus\n\ndetails`)
+    const prompt = buildSystemPrompt({ capabilities: CAPS, tools: [], cwd: projectRoot })
+    expect(prompt).not.toContain('# active skills')
+  })
+
+  it('omits the section when an active set is empty', () => {
+    const prompt = buildSystemPrompt({ capabilities: CAPS, tools: [], cwd: projectRoot, activeSkills: new Set() })
+    expect(prompt).not.toContain('# active skills')
+  })
+
+  it('appends each active skill body under the # active skills heading', () => {
+    writeUserSkill('security', `security focus\n\nprioritize SSRF and injection.`)
+    writeUserSkill('refactor', `refactor focus\n\npreserve behavior, no new abstractions.`)
+    const prompt = buildSystemPrompt({
+      capabilities: CAPS,
+      tools: [],
+      cwd: projectRoot,
+      activeSkills: new Set(['security', 'refactor']),
+    })
+    expect(prompt).toContain('# active skills')
+    expect(prompt).toContain('prioritize SSRF and injection')
+    expect(prompt).toContain('preserve behavior')
+    // separator between skill bodies
+    expect(prompt).toContain('---')
+  })
+
+  it('silently skips unknown skill names without crashing', () => {
+    writeUserSkill('security', `security focus\n\nbody.`)
+    const prompt = buildSystemPrompt({
+      capabilities: CAPS,
+      tools: [],
+      cwd: projectRoot,
+      activeSkills: new Set(['security', 'ghost']),
+    })
+    expect(prompt).toContain('# active skills')
+    expect(prompt).toContain('body.')
+  })
+})

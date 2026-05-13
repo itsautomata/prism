@@ -13,6 +13,7 @@ import type { Memory } from '../memory/inject.js'
 import { formatMemory } from '../memory/inject.js'
 import { listAgents } from '../agents/registry.js'
 import { DEFAULT_AGENT } from '../agents/definition.js'
+import { loadSkill, SkillNotFoundError, SkillLoadError } from '../skills/loader.js'
 
 interface PromptOptions {
   capabilities: ModelCapabilities
@@ -22,10 +23,16 @@ interface PromptOptions {
   projectContext?: ProjectContext
   memory?: Memory
   inPlanMode?: boolean
+  /**
+   * names of skills the operator has toggled on for the session. each one is
+   * loaded by name from <cwd>/skills/<name>.md or ~/.prism/skills/<name>.md
+   * and its body is appended to the prompt under `# active skills`.
+   */
+  activeSkills?: ReadonlySet<string>
 }
 
 export function buildSystemPrompt(options: PromptOptions): string {
-  const { capabilities, tools, cwd, profile, projectContext, memory, inPlanMode } = options
+  const { capabilities, tools, cwd, profile, projectContext, memory, inPlanMode, activeSkills } = options
 
   const sections = [
     getCore(),
@@ -35,6 +42,9 @@ export function buildSystemPrompt(options: PromptOptions): string {
 
   const agentsBlock = getAgents(cwd)
   if (agentsBlock) sections.push(agentsBlock)
+
+  const skillsBlock = getActiveSkills(cwd, activeSkills)
+  if (skillsBlock) sections.push(skillsBlock)
 
   if (projectContext) {
     sections.push(formatContext(projectContext))
@@ -165,6 +175,30 @@ function getTools(tools: ToolSchema[], capabilities: ModelCapabilities): string 
 ${toolList}
 
 Use the right tool: Read over cat, Edit over sed, Grep over grep, Glob over find.`
+}
+
+/**
+ * inject the bodies of every active skill into the prompt. concatenated with
+ * a horizontal rule between entries so the model can tell where one ends and
+ * the next begins. skills the loader cannot read are silently skipped here;
+ * the operator sees the load error when they invoke /skill <name>.
+ */
+function getActiveSkills(cwd: string, names?: ReadonlySet<string>): string | null {
+  if (!names || names.size === 0) return null
+
+  const bodies: string[] = []
+  for (const name of names) {
+    try {
+      const skill = loadSkill(name, cwd)
+      bodies.push(skill.body)
+    } catch (e) {
+      if (e instanceof SkillNotFoundError || e instanceof SkillLoadError) continue
+      throw e
+    }
+  }
+  if (bodies.length === 0) return null
+
+  return ['# active skills', '', bodies.join('\n\n---\n\n')].join('\n')
 }
 
 /**

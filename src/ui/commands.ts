@@ -7,6 +7,7 @@ import type React from 'react'
 import { addRule, removeRule, setMaxTools, type ModelProfile } from '../learning/profile.js'
 import { appendMemo, getProjectId } from '../memory/memo.js'
 import { listAgents, resolveAgent, AgentNotFoundError, AgentValidationError } from '../agents/registry.js'
+import { listSkills, loadSkill, SkillNotFoundError, SkillLoadError } from '../skills/loader.js'
 import type { DisplayMessage } from './MessageList.js'
 
 /**
@@ -27,6 +28,7 @@ export const SLASH_COMMANDS: SlashCommandSpec[] = [
   { name: '/exec-plan', desc: 'exit plan mode and execute the plan' },
   { name: '/cancel-plan', desc: 'exit plan mode without executing' },
   { name: '/agent', args: '[name] [task]', desc: 'list agents, show one, or invoke a named subagent' },
+  { name: '/skill', args: '[name|clear]', desc: 'list skills, toggle one on/off, or deactivate all' },
   { name: '/teach', args: '<rule>', desc: 'teach the model a rule (persisted)' },
   { name: '/rules', desc: 'show learned rules' },
   { name: '/forget', args: '<n>', desc: 'forget rule n' },
@@ -73,6 +75,10 @@ export function handleSlashCommand(
   },
   trigger?: SlashTriggerFn,
   cwd?: string,
+  skills?: {
+    active: ReadonlySet<string>
+    setActive: (next: Set<string>) => void
+  },
 ): boolean {
   const parts = input.split(' ')
   const cmd = parts[0]
@@ -282,6 +288,81 @@ export function handleSlashCommand(
       trigger(`[the operator invoked /agent ${name} with this task: ${task}
 
 use the Agent tool to spawn the ${name} subagent with this task. pass agent: "${name}" and report its findings back to the operator.]`)
+      return true
+    }
+
+    case '/skill': {
+      const cwdToUse = cwd ?? process.cwd()
+      const skillArgs = args.trim().split(/\s+/).filter(Boolean)
+
+      // /skill → list available skills with active markers
+      if (skillArgs.length === 0) {
+        try {
+          const all = listSkills(cwdToUse)
+          if (all.length === 0) {
+            info('no skills defined yet. drop a file at <cwd>/skills/<name>.md or ~/.prism/skills/<name>.md. the first line of the file is the description; the rest is the body that lands in the prompt when the skill is active.')
+            return true
+          }
+          const lines = ['available skills (* = active):']
+          for (const s of all) {
+            const marker = skills?.active.has(s.name) ? '*' : ' '
+            lines.push(`  ${marker} ${s.name.padEnd(22)} ${s.description}`)
+          }
+          lines.push('')
+          lines.push('usage: /skill <name>   toggle a skill on/off for this session')
+          lines.push('       /skill clear    deactivate all')
+          info(lines.join('\n'))
+        } catch (e) {
+          info(`failed to list skills: ${(e as Error).message}`)
+        }
+        return true
+      }
+
+      // /skill clear → deactivate all
+      if (skillArgs[0] === 'clear') {
+        if (!skills) {
+          info('skill state is not available in this build.')
+          return true
+        }
+        if (skills.active.size === 0) {
+          info('no skills were active.')
+          return true
+        }
+        skills.setActive(new Set())
+        info('all skills deactivated.')
+        return true
+      }
+
+      // /skill <name> → toggle
+      const name = skillArgs[0]!
+      if (!skills) {
+        info('skill state is not available in this build.')
+        return true
+      }
+
+      if (skills.active.has(name)) {
+        const next = new Set(skills.active)
+        next.delete(name)
+        skills.setActive(next)
+        info(`skill "${name}" deactivated.`)
+        return true
+      }
+
+      // activating: validate the file exists and loads
+      try {
+        loadSkill(name, cwdToUse)
+      } catch (e) {
+        if (e instanceof SkillNotFoundError || e instanceof SkillLoadError) {
+          info(e.message)
+          return true
+        }
+        throw e
+      }
+
+      const next = new Set(skills.active)
+      next.add(name)
+      skills.setActive(next)
+      info(`skill "${name}" activated.`)
       return true
     }
 
