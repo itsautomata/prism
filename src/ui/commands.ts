@@ -6,6 +6,7 @@
 import type React from 'react'
 import { addRule, removeRule, setMaxTools, type ModelProfile } from '../learning/profile.js'
 import { appendMemo, getProjectId } from '../memory/memo.js'
+import { listAgents, resolveAgent, AgentNotFoundError, AgentValidationError } from '../agents/registry.js'
 import type { DisplayMessage } from './MessageList.js'
 
 /**
@@ -25,6 +26,7 @@ export const SLASH_COMMANDS: SlashCommandSpec[] = [
   { name: '/plan', desc: 'enter plan mode (model proposes before executing)' },
   { name: '/exec-plan', desc: 'exit plan mode and execute the plan' },
   { name: '/cancel-plan', desc: 'exit plan mode without executing' },
+  { name: '/agent', args: '[name] [task]', desc: 'list agents, show one, or invoke a named subagent' },
   { name: '/teach', args: '<rule>', desc: 'teach the model a rule (persisted)' },
   { name: '/rules', desc: 'show learned rules' },
   { name: '/forget', args: '<n>', desc: 'forget rule n' },
@@ -49,6 +51,14 @@ export function filterSlashCommands(query: string): SlashCommandSpec[] {
 
 export type SwitchModelFn = (newModel: string) => Promise<void>
 
+/**
+ * push a hidden user message into the conversation and invoke the model loop.
+ * used by /exec-plan, /cancel-plan, and /agent to give the model an explicit
+ * "what just happened" signal, since slash commands are not visible to it
+ * otherwise. the host filters these messages from the UI (see INTERNAL_PREFIXES).
+ */
+export type SlashTriggerFn = (hiddenMsg: string) => void
+
 export function handleSlashCommand(
   input: string,
   model: string,
@@ -60,14 +70,9 @@ export function handleSlashCommand(
   planMode?: {
     value: boolean
     set: (v: boolean) => void
-    /**
-     * push a hidden user message into the conversation (filtered from the UI by
-     * INTERNAL_PREFIXES) and invoke the model loop. used by /exec-plan and
-     * /cancel-plan to give the model an explicit "what just happened" signal,
-     * since neither slash command is visible to the model otherwise.
-     */
-    trigger?: (hiddenMsg: string) => void
   },
+  trigger?: SlashTriggerFn,
+  cwd?: string,
 ): boolean {
   const parts = input.split(' ')
   const cmd = parts[0]
@@ -181,7 +186,7 @@ export function handleSlashCommand(
       } else {
         planMode.set(false)
         info('plan mode: off. executing.')
-        planMode.trigger?.('[plan approved by user. execute the plan above. use Edit, Write, and Bash as needed.]')
+        trigger?.('[plan approved by user. execute the plan above. use Edit, Write, and Bash as needed.]')
       }
       return true
 
@@ -193,9 +198,92 @@ export function handleSlashCommand(
       } else {
         planMode.set(false)
         info('plan mode: off. plan abandoned.')
-        planMode.trigger?.('[the plan was abandoned by the user. ask why and what they want to do next instead.]')
+        trigger?.('[the plan was abandoned by the user. ask why and what they want to do next instead.]')
       }
       return true
+
+    case '/agent': {
+      const cwdToUse = cwd ?? process.cwd()
+      const agentArgs = args.trim().split(/\s+/).filter(Boolean)
+
+      // /agent → list available agents.
+      if (agentArgs.length === 0) {
+        try {
+          const agents = listAgents(cwdToUse)
+          const lines = ['available agents:']
+          for (const a of agents) {
+            lines.push(`  ${a.name.padEnd(22)} ${a.description}`)
+          }
+          lines.push('')
+          lines.push('usage: /agent <name>          show details')
+          lines.push('       /agent <name> <task>   invoke directly')
+          info(lines.join('\n'))
+        } catch (e) {
+          info(`failed to list agents: ${(e as Error).message}`)
+        }
+        return true
+      }
+
+      const name = agentArgs[0]!
+      const task = agentArgs.slice(1).join(' ')
+
+      // /agent <name> → show details (works for built-ins including recovery).
+      if (!task) {
+        try {
+          const a = resolveAgent(name, cwdToUse)
+          const tools = a.tools === '*' ? '* (inherits parent)' : a.tools.join(', ')
+          const lines = [
+            `agent: ${a.name}`,
+            `  description: ${a.description}`,
+            `  tools: ${tools}`,
+            `  permissions: ${a.permissions}`,
+            `  max turns: ${a.maxTurns}`,
+          ]
+          if (a.model) lines.push(`  model: ${a.model}`)
+          lines.push('')
+          lines.push('system prompt (first 5 lines):')
+          const preview = a.systemPrompt.split('\n').slice(0, 5).map(l => `  ${l}`).join('\n')
+          lines.push(preview)
+          info(lines.join('\n'))
+        } catch (e) {
+          if (e instanceof AgentNotFoundError || e instanceof AgentValidationError) {
+            info(e.message)
+          } else {
+            info(`failed to show agent: ${(e as Error).message}`)
+          }
+        }
+        return true
+      }
+
+      // /agent <name> <task> → ask the model to spawn the named subagent.
+      // recovery is the engine's internal flow; reject direct invocation here
+      // rather than waiting for the Agent tool to bounce it later.
+      if (name === 'recovery') {
+        info('"recovery" is reserved for the engine\'s automatic recovery flow and cannot be invoked directly.')
+        return true
+      }
+
+      if (!trigger) {
+        info('agent invocation is not available in this build.')
+        return true
+      }
+
+      try {
+        resolveAgent(name, cwdToUse)
+      } catch (e) {
+        if (e instanceof AgentNotFoundError || e instanceof AgentValidationError) {
+          info(e.message)
+          return true
+        }
+        throw e
+      }
+
+      info(`invoking ${name}...`)
+      trigger(`[the operator invoked /agent ${name} with this task: ${task}
+
+use the Agent tool to spawn the ${name} subagent with this task. pass agent: "${name}" and report its findings back to the operator.]`)
+      return true
+    }
 
     case '/clear':
       setMessages([])

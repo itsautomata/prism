@@ -1,5 +1,7 @@
 import { describe, it, expect, beforeEach, afterAll, vi } from 'vitest'
-import { rmSync } from 'fs'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'fs'
+import { join } from 'path'
+import { tmpdir } from 'os'
 
 // redirect homedir so addRule/removeRule/setMaxTools (called by handleSlashCommand)
 // write to a temp dir, not the real ~/.prism
@@ -67,8 +69,8 @@ describe('filterSlashCommands', () => {
     expect(filterSlashCommands('   ')).toEqual([])
   })
 
-  it('returns all 12 commands for "/" alone', () => {
-    expect(filterSlashCommands('/').length).toBe(12)
+  it('returns all 13 commands for "/" alone', () => {
+    expect(filterSlashCommands('/').length).toBe(13)
   })
 
   it('returns /max-tools and /model for "/m"', () => {
@@ -324,5 +326,89 @@ describe('handleSlashCommand: plan mode', () => {
     const result = handleSlashCommand('/plan', 'm', makeProfile(), spy(), setMessages, spy())
     expect(result).toBe(true)
     expect(JSON.stringify(captured)).toContain('not available')
+  })
+})
+
+describe('handleSlashCommand: /agent', () => {
+  let projectRoot: string
+  let messages: any[]
+  const setMessages = (updater: any) => {
+    messages = typeof updater === 'function' ? updater(messages) : updater
+  }
+
+  beforeEach(() => {
+    messages = []
+    projectRoot = mkdtempSync(join(tmpdir(), 'prism-cmd-agent-'))
+    rmSync(`${TEST_HOME}/.prism/agents`, { recursive: true, force: true })
+  })
+
+  function writeUserAgent(name: string, body: string): void {
+    const dir = join(TEST_HOME, '.prism', 'agents')
+    mkdirSync(dir, { recursive: true })
+    writeFileSync(join(dir, `${name}.md`), body, 'utf-8')
+  }
+
+  function minimal(): string {
+    return `---
+description: a minimal agent
+---
+
+you are a minimal agent.`
+  }
+
+  it('/agent lists the default and any user-defined agents', () => {
+    writeUserAgent('researcher', minimal())
+    handleSlashCommand('/agent', 'm', makeProfile(), spy(), setMessages, spy(), undefined, undefined, undefined, projectRoot)
+    const text = JSON.stringify(messages)
+    expect(text).toContain('available agents')
+    expect(text).toContain('default')
+    expect(text).toContain('researcher')
+  })
+
+  it('/agent <name> shows that agent\'s details', () => {
+    writeUserAgent('auditor', `---
+description: audit code
+tools: [Read, Grep]
+permissions: deny-writes
+---
+audit the target.`)
+    handleSlashCommand('/agent auditor', 'm', makeProfile(), spy(), setMessages, spy(), undefined, undefined, undefined, projectRoot)
+    const text = JSON.stringify(messages)
+    expect(text).toContain('auditor')
+    expect(text).toContain('audit code')
+    expect(text).toContain('deny-writes')
+  })
+
+  it('/agent <unknown> reports not found without invoking trigger', () => {
+    const triggerCalls: string[] = []
+    const trigger = (m: string) => { triggerCalls.push(m) }
+    handleSlashCommand('/agent unknown task here', 'm', makeProfile(), spy(), setMessages, spy(), undefined, undefined, trigger, projectRoot)
+    expect(triggerCalls).toHaveLength(0)
+    expect(JSON.stringify(messages)).toContain('not found')
+  })
+
+  it('/agent recovery <task> is rejected with a clear message', () => {
+    const triggerCalls: string[] = []
+    const trigger = (m: string) => { triggerCalls.push(m) }
+    handleSlashCommand('/agent recovery diagnose', 'm', makeProfile(), spy(), setMessages, spy(), undefined, undefined, trigger, projectRoot)
+    expect(triggerCalls).toHaveLength(0)
+    expect(JSON.stringify(messages)).toContain('reserved')
+  })
+
+  it('/agent <name> <task> triggers a hidden model message naming the agent', () => {
+    writeUserAgent('researcher', minimal())
+    const triggerCalls: string[] = []
+    const trigger = (m: string) => { triggerCalls.push(m) }
+    handleSlashCommand('/agent researcher summarize src/tools/', 'm', makeProfile(), spy(), setMessages, spy(), undefined, undefined, trigger, projectRoot)
+    expect(triggerCalls).toHaveLength(1)
+    expect(triggerCalls[0]).toContain('researcher')
+    expect(triggerCalls[0]).toContain('summarize src/tools/')
+    expect(triggerCalls[0]).toContain('Agent tool')
+  })
+
+  it('/agent <name> <task> without a trigger function is a graceful no-op', () => {
+    writeUserAgent('researcher', minimal())
+    handleSlashCommand('/agent researcher do something', 'm', makeProfile(), spy(), setMessages, spy(), undefined, undefined, undefined, projectRoot)
+    expect(JSON.stringify(messages)).toContain('not available')
   })
 })

@@ -231,8 +231,7 @@ export function App({ provider: initProvider, model: initModel, tools, capabilit
       const handled = handleSlashCommand(input, model, profile, setProfile, setDisplayMessages, exit, switchFn, {
         value: inPlanMode,
         set: setInPlanMode,
-        trigger: triggerSyntheticTurn,
-      })
+      }, triggerSyntheticTurn, process.cwd())
       if (handled) return
     }
 
