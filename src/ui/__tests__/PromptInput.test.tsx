@@ -1,4 +1,3 @@
-import React from 'react'
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { render } from 'ink-testing-library'
 import { PromptInput } from '../PromptInput.js'
@@ -219,5 +218,35 @@ describe('PromptInput: slash autocomplete', () => {
     await tick()
     // tab on the already-committed buffer should not submit
     expect(onSubmit).not.toHaveBeenCalled()
+  })
+
+  it('stale display does not commit the wrong command on enter', async () => {
+    // regression: enter/tab committed from the stale `matches` closure (derived
+    // from the throttled display state) instead of the live buffer. typing fast
+    // could leave display at '/' while bufferRef already held '/exec-plan';
+    // with selectedHintIdx navigated to /cancel-plan (index 3 in the full list),
+    // the old code committed /cancel-plan instead of the intended command.
+    const { stdin } = render(<PromptInput onSubmit={onSubmit} isLoading={false} />)
+
+    stdin.write('/')
+    await tick() // display settles to '/', dropdown shows all 14 commands
+
+    // navigate to /cancel-plan: /model(0) → /plan(1) → /exec-plan(2) → /cancel-plan(3)
+    stdin.write(KEY.down)
+    await tick(15)
+    stdin.write(KEY.down)
+    await tick(15)
+    stdin.write(KEY.down)
+    await tick(15)
+
+    // type the rest of /exec-plan without waiting — display is still '/'
+    // at the time enter fires, bufferRef = '/exec-plan' but the stale display
+    // closure still sees all 14 matches with /cancel-plan highlighted
+    stdin.write('exec-plan')
+    stdin.write(KEY.enter) // no tick before this: display hasn't refreshed yet
+
+    await tick()
+    expect(onSubmit).toHaveBeenCalledWith('/exec-plan')
+    expect(onSubmit).not.toHaveBeenCalledWith('/cancel-plan')
   })
 })

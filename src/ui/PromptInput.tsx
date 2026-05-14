@@ -75,8 +75,16 @@ export const PromptInput = memo(function PromptInput({ onSubmit, isLoading, inPl
       // if the buffer already matches the highlighted command exactly, tab is a
       // no-op and enter falls through to the submit handler below (so a second
       // enter sends the committed command without burying it in the dropdown).
+      //
+      // important: recompute from bufferRef directly here, not from the stale
+      // `matches` closure. display is throttled (16ms), so if the user types
+      // fast and hits enter before the next tick, matches still reflects the
+      // old display value and the wrong hint can get committed.
       if (key.tab || key.return) {
-        const selected = matches[selectedHintIdx]
+        const liveWord = bufferRef.current.split(' ')[0] ?? ''
+        const liveShowHints = bufferRef.current.startsWith('/') && !bufferRef.current.includes(' ')
+        const liveMatches = liveShowHints ? filterSlashCommands(liveWord) : []
+        const selected = liveMatches[selectedHintIdx] ?? liveMatches[0]
         if (selected) {
           const newText = selected.name + (selected.args ? ' ' : '')
           if (bufferRef.current !== newText) {
