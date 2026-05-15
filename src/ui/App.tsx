@@ -13,6 +13,7 @@ import { scanProject } from '../context/scanner.js'
 import { saveSession } from '../sessions/store.js'
 import type { Session } from '../sessions/types.js'
 import { createAgentTool } from '../tools/agent.js'
+import { createSkillTool } from '../tools/skill.js'
 import type { AgentProgressEvent } from '../agents/runner.js'
 import { handleSlashCommand } from './commands.js'
 import type { SlashCommandSpec } from './commands.js'
@@ -115,7 +116,9 @@ export function App({ provider: initProvider, model: initModel, tools: baseTools
     },
   }))
 
-  const tools = useMemo(() => [...baseTools, agentTool], [baseTools, agentTool])
+  const [skillTool] = useState<Tool>(() => createSkillTool(process.cwd()))
+
+  const tools = useMemo(() => [...baseTools, agentTool, skillTool], [baseTools, agentTool, skillTool])
   const toolSchemas = useMemo(() => tools.map(t => toolToSchema(t)), [tools])
 
   const getSystemPrompt = useCallback(() => {

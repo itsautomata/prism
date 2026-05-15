@@ -36,6 +36,8 @@ export interface Skill {
   mode: SkillMode
   /** `## heading` lines extracted from the body, for autocomplete. */
   sections: string[]
+  /** whether the skill requires user permission before the model can invoke it. */
+  requirePermission: boolean
 }
 
 export class SkillNotFoundError extends Error {
@@ -175,6 +177,9 @@ function readSkillFile(filePath: string): Skill {
   const modeRaw = (frontmatter['mode'] || '').toLowerCase()
   const mode: SkillMode = modeRaw === 'passive' ? 'passive' : 'invoke'
 
+  const requirePermissionRaw = frontmatter['require-permission'] || ''
+  const requirePermission = requirePermissionRaw === 'true' || requirePermissionRaw === 'yes'
+
   const firstLine = body.split('\n')[0]!.trim()
   const description = firstLine.length > 0 ? firstLine : `skill ${name}`
 
@@ -185,5 +190,5 @@ function readSkillFile(filePath: string): Skill {
     if (m) sections.push(m[1]!.trim())
   }
 
-  return { name, description, body, mode, sections }
+  return { name, description, body, mode, sections, requirePermission }
 }

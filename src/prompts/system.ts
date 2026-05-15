@@ -13,7 +13,7 @@ import type { Memory } from '../memory/inject.js'
 import { formatMemory } from '../memory/inject.js'
 import { listAgents } from '../agents/registry.js'
 import { DEFAULT_AGENT } from '../agents/definition.js'
-import { loadSkill, SkillNotFoundError, SkillLoadError } from '../skills/loader.js'
+import { loadSkill, listSkills, SkillNotFoundError, SkillLoadError } from '../skills/loader.js'
 import { loadLenses } from '../context/lenses.js'
 
 interface PromptOptions {
@@ -43,6 +43,9 @@ export function buildSystemPrompt(options: PromptOptions): string {
 
   const agentsBlock = getAgents(cwd)
   if (agentsBlock) sections.push(agentsBlock)
+
+  const invokeSkillsBlock = getInvokeSkills(cwd)
+  if (invokeSkillsBlock) sections.push(invokeSkillsBlock)
 
   const skillsBlock = getActiveSkills(cwd, activeSkills)
   if (skillsBlock) sections.push(skillsBlock)
@@ -179,6 +182,32 @@ function getTools(tools: ToolSchema[], capabilities: ModelCapabilities): string 
 ${toolList}
 
 Use the right tool: Read over cat, Edit over sed, Grep over grep, Glob over find.`
+}
+
+/**
+ * list invoke-mode skills the model can call via useSkill. mirrors getAgents:
+ * without this section the model knows the useSkill tool exists but has no way
+ * to discover which skill names work. passive skills are excluded (they live
+ * in `# active skills` when toggled on, and are not invokable).
+ */
+function getInvokeSkills(cwd: string): string | null {
+  let skills
+  try {
+    skills = listSkills(cwd)
+  } catch {
+    return null
+  }
+
+  const invokeSkills = skills.filter(s => s.mode === 'invoke')
+  if (invokeSkills.length === 0) return null
+
+  const lines = ['# available skills', '']
+  for (const s of invokeSkills) {
+    lines.push(`${s.name}: ${s.description}`)
+  }
+  lines.push('')
+  lines.push('to use one, call useSkill with `name: "<skill-name>"`. add `section` to focus on a `## heading`, `task` for context.')
+  return lines.join('\n')
 }
 
 /**
