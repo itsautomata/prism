@@ -9,6 +9,7 @@ export interface DisplayMessage {
   toolName?: string
   isError?: boolean
   isStreaming?: boolean
+  color?: string
 }
 
 interface MessageListProps {
@@ -60,7 +61,7 @@ function MessageBlock({ message }: { message: DisplayMessage }) {
       }
       return (
         <Box marginTop={0} marginBottom={0} marginLeft={4}>
-          <Text color={theme.toolOutput}>
+          <Text color={message.color ?? theme.toolOutput}>
             {message.text.length > 500
               ? message.text.slice(0, 500) + '\n...(truncated)'
               : message.text}
