@@ -14,6 +14,7 @@ import { formatMemory } from '../memory/inject.js'
 import { listAgents } from '../agents/registry.js'
 import { DEFAULT_AGENT } from '../agents/definition.js'
 import { loadSkill, SkillNotFoundError, SkillLoadError } from '../skills/loader.js'
+import { loadLenses } from '../context/lenses.js'
 
 interface PromptOptions {
   capabilities: ModelCapabilities
@@ -52,6 +53,9 @@ export function buildSystemPrompt(options: PromptOptions): string {
       sections.push(getGitGuidance())
     }
   }
+
+  const lensesBlock = getLenses(cwd)
+  if (lensesBlock) sections.push(lensesBlock)
 
   if (memory) {
     const memBlock = formatMemory(memory)
@@ -253,6 +257,13 @@ deliver a single markdown plan with these sections:
 - **risks**: edge cases, reversibility, blast radius.
 
 if the user pushes back, revise the plan. plan mode ends when this section is no longer in your prompt; that is your signal to execute.`
+}
+
+function getLenses(cwd: string): string | null {
+  const lenses = loadLenses(cwd)
+  if (lenses.length === 0) return null
+  const body = lenses.map(l => l.content).join('\n\n---\n\n')
+  return `# project context\n\n${body}`
 }
 
 function getEnvironment(cwd: string): string {
