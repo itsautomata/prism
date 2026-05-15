@@ -39,6 +39,14 @@ export interface CreateAgentToolOptions {
   subagentTools: Tool[]
   /** optional progress callback wired to the host UI. */
   onProgress?: (event: AgentProgressEvent) => void
+  /**
+   * working directory used at orchestration time (isConcurrencySafe) to
+   * resolve the requested agent's permission policy. defaults to
+   * `process.cwd()`. host code (App.tsx) should pass the runtime cwd
+   * explicitly to keep the schema-level decision consistent with call-time
+   * agent resolution.
+   */
+  cwd?: string
 }
 
 /**
@@ -48,6 +56,7 @@ export interface CreateAgentToolOptions {
  */
 export function createAgentTool(opts: CreateAgentToolOptions): Tool<AgentInput> {
   const subagentTools = opts.subagentTools.filter(t => t.name !== 'Agent')
+  const boundCwd = opts.cwd ?? process.cwd()
 
   return buildTool<AgentInput>({
     name: 'Agent',
@@ -100,7 +109,21 @@ export function createAgentTool(opts: CreateAgentToolOptions): Tool<AgentInput> 
       }
     },
 
-    isConcurrencySafe: () => true, // agents can run in parallel
+    // parallel-safety hinges on the requested agent's permission policy:
+    // deny-writes can never mutate state, so N of them race on nothing.
+    // inherit can write through the parent's resolver; two inherit agents
+    // in the same batch could race on shared files. serialize those.
+    // unresolvable agents (unknown name, broken file) → assume unsafe.
+    isConcurrencySafe: (input: AgentInput) => {
+      try {
+        const requested = input.agent?.trim()
+        const agentName = requested && requested.length > 0 ? requested : undefined
+        const agent = resolveAgent(agentName, boundCwd)
+        return agent.permissions === 'deny-writes'
+      } catch {
+        return false
+      }
+    },
     isReadOnly: () => true, // agents report back, parent decides what to do
 
     checkPermissions: () => ({ behavior: 'allow' }), // auto-allow agent spawning

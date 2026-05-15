@@ -97,6 +97,7 @@ export function App({ provider: initProvider, model: initModel, tools: baseTools
     provider: initProvider,
     model: initModel,
     subagentTools: baseTools,
+    cwd: process.cwd(),
     onProgress: (event: AgentProgressEvent) => {
       if (event.type === 'thinking') {
         setDisplayMessages(prev => {

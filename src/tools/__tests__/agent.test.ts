@@ -158,3 +158,48 @@ describe('AgentTool: schema', () => {
     expect(ok.success).toBe(true)
   })
 })
+
+describe('AgentTool: isConcurrencySafe', () => {
+  // bind cwd at construction so the schema-level resolver finds the test
+  // fixtures rather than the real process.cwd().
+  function makeTool(): Tool {
+    return createAgentTool({
+      provider: stubProvider(),
+      model: 'stub-model',
+      subagentTools: [],
+      cwd: projectRoot,
+    })
+  }
+
+  it('default agent (no name) is concurrency-safe (deny-writes by construction)', () => {
+    const tool = makeTool()
+    expect(tool.isConcurrencySafe({ description: 'x', prompt: 'y' })).toBe(true)
+  })
+
+  it('deny-writes agent is concurrency-safe', () => {
+    writeUserAgent('researcher', `---
+description: read-only researcher
+permissions: deny-writes
+---
+
+system prompt body.`)
+    const tool = makeTool()
+    expect(tool.isConcurrencySafe({ description: 'x', prompt: 'y', agent: 'researcher' })).toBe(true)
+  })
+
+  it('inherit-permissions agent is NOT concurrency-safe (write races on shared files)', () => {
+    writeUserAgent('refactorer', `---
+description: write-capable refactorer
+permissions: inherit
+---
+
+system prompt body.`)
+    const tool = makeTool()
+    expect(tool.isConcurrencySafe({ description: 'x', prompt: 'y', agent: 'refactorer' })).toBe(false)
+  })
+
+  it('unknown agent name falls back to NOT safe (assume unsafe)', () => {
+    const tool = makeTool()
+    expect(tool.isConcurrencySafe({ description: 'x', prompt: 'y', agent: 'does-not-exist' })).toBe(false)
+  })
+})
