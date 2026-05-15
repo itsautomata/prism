@@ -68,7 +68,12 @@ export function createSkillTool(cwd: string): Tool<{ name: string; section?: str
     // "follow these instructions" tool results into the same conversation,
     // leaving the model with conflicting directives. serialize instead.
     isConcurrencySafe: () => false,
-    isReadOnly: () => true,
+    // not read-only: the skill body lands in the conversation framed as
+    // "follow these instructions," which drives downstream Edit/Write/Bash
+    // calls. claiming read-only here short-circuits needsPermission() in
+    // orchestration.ts:54, killing the `requirePermission` gate. flagging
+    // false honors the operator's `require-permission: true` frontmatter.
+    isReadOnly: () => false,
     checkPermissions: (input) => {
       try {
         const skill = loadSkill(input.name, cwd)

@@ -203,3 +203,34 @@ describe('listSkills', () => {
     expect(names).not.toContain('broken')
   })
 })
+
+describe('loadSkill: name sanitization (prevents path traversal)', () => {
+  // regression: useSkill is model-controlled; the model could pass a name like
+  // "../README" and the loader would happily return the README body, which the
+  // useSkill tool wraps as "follow these instructions." block path traversal
+  // at the loader so the model can't reach files outside skills/.
+  it('rejects names containing ..', () => {
+    expect(() => loadSkill('../README', projectRoot)).toThrow(SkillNotFoundError)
+    expect(() => loadSkill('foo..bar', projectRoot)).toThrow(SkillNotFoundError)
+  })
+
+  it('rejects names containing path separators', () => {
+    expect(() => loadSkill('foo/bar', projectRoot)).toThrow(SkillNotFoundError)
+    expect(() => loadSkill('/etc/passwd', projectRoot)).toThrow(SkillNotFoundError)
+  })
+
+  it('rejects names with leading dot', () => {
+    expect(() => loadSkill('.hidden', projectRoot)).toThrow(SkillNotFoundError)
+  })
+
+  it('rejects names with shell metacharacters', () => {
+    expect(() => loadSkill('foo$bar', projectRoot)).toThrow(SkillNotFoundError)
+    expect(() => loadSkill('foo;bar', projectRoot)).toThrow(SkillNotFoundError)
+    expect(() => loadSkill('foo bar', projectRoot)).toThrow(SkillNotFoundError)
+  })
+
+  it('accepts normal skill names', () => {
+    writeUserSkill('valid-name_1.2', 'a normal skill\n\nbody.')
+    expect(() => loadSkill('valid-name_1.2', projectRoot)).not.toThrow()
+  })
+})

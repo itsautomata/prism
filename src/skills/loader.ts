@@ -62,11 +62,21 @@ function userSkillsDir(): string {
   return join(homedir(), '.prism', 'skills')
 }
 
+// names must look like a plain filename stem: letters, digits, and `_-.` only.
+// path separators, `..`, leading dots, and shell metacharacters are rejected.
+// without this guard the model could pass `name: "../README"` via useSkill
+// and have the resulting body re-emerge framed as "follow these instructions."
+const VALID_SKILL_NAME = /^[A-Za-z0-9_][A-Za-z0-9_.-]*$/
+
 /**
  * load a skill by name. project scope wins on a same-name collision.
  * throws SkillNotFoundError when neither scope has the file.
  */
 export function loadSkill(name: string, cwd: string): Skill {
+  if (!VALID_SKILL_NAME.test(name) || name.includes('..')) {
+    throw new SkillNotFoundError(name)
+  }
+
   const project = join(projectSkillsDir(cwd), `${name}.md`)
   if (existsSync(project)) return readSkillFile(project)
 
