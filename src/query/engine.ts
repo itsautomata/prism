@@ -282,6 +282,11 @@ export async function* query(options: QueryOptions): AsyncGenerator<QueryEvent> 
 
         yield { type: 'tool_end', name: 'recovery agent', id: 'recovery', result: diagnosis }
 
+        // reset error counter after spawning recovery so it fires only once per cluster.
+        // if the fix still fails, the next error is treated as a fresh single error,
+        // not a consecutive pair to avoids the infinite recovery loop.
+        consecutiveErrors = 0
+
         messages.push({
           role: 'user',
           content: [
