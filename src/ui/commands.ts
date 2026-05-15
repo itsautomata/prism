@@ -31,10 +31,8 @@ export const SLASH_COMMANDS: SlashCommandSpec[] = [
   { name: '/exec-plan', desc: 'exit plan mode and execute the plan' },
   { name: '/cancel-plan', desc: 'exit plan mode without executing' },
   { name: '/agent', args: '[name] [task]', desc: 'list agents, show one, or invoke a named subagent' },
-  { name: '/skill', args: '[name|clear]', desc: 'toggle a passive skill on/off' },
+  { name: '/skill', args: '[name|clear]', desc: 'list all skills or toggle/clear passive skills' },
   { name: '/run', args: '<name> [section] [task]', desc: 'invoke a skill one-shot' },
-  { name: '/ls_skills', desc: 'list available invoke-mode skills' },
-  { name: '/ls_passive_skills', desc: 'list available passive-mode skills' },
   { name: '/teach', args: '<rule>', desc: 'teach the model a rule (persisted)' },
   { name: '/rules', desc: 'show learned rules' },
   { name: '/forget', args: '<n>', desc: 'forget rule n' },
@@ -90,8 +88,8 @@ export function handleSlashCommand(
   const cmd = parts[0]
   const args = parts.slice(1).join(' ')
 
-  const info = (text: string) => {
-    setMessages(prev => [...prev, { role: 'tool_result', text, isError: false }])
+  const info = (text: string, color?: string) => {
+    setMessages(prev => [...prev, { role: 'tool_result', text, isError: false, color }])
   }
 
   switch (cmd) {
@@ -297,56 +295,13 @@ use the Agent tool to spawn the ${name} subagent with this task. pass agent: "${
       return true
     }
 
-    case '/ls_skills': {
-      const cwdToUse = cwd ?? process.cwd()
-      try {
-        const all = listSkills(cwdToUse).filter(s => s.mode === 'invoke')
-        if (all.length === 0) {
-          info('no invoke skills defined yet. drop a file at <cwd>/skills/<name>.md with no mode frontmatter (or mode: invoke).')
-          return true
-        }
-        const lines = ['available invoke skills:']
-        for (const s of all) {
-          lines.push(`  ${s.name.padEnd(22)} ${s.description}`)
-        }
-        lines.push('')
-        lines.push('usage: /run <name> [section]   invoke a skill one-shot')
-        info(lines.join('\n'))
-      } catch (e) {
-        info(`failed to list skills: ${(e as Error).message}`)
-      }
-      return true
-    }
-
-    case '/ls_passive_skills': {
-      const cwdToUse = cwd ?? process.cwd()
-      try {
-        const all = listSkills(cwdToUse).filter(s => s.mode === 'passive')
-        if (all.length === 0) {
-          info('no passive skills defined yet. add `mode: passive` to the frontmatter of a skill file.')
-          return true
-        }
-        const lines = ['available passive skills (* = active):']
-        for (const s of all) {
-          const marker = skills?.active.has(s.name) ? '*' : ' '
-          lines.push(`  ${marker} ${s.name.padEnd(22)} ${s.description}`)
-        }
-        lines.push('')
-        lines.push('usage: /skill <name>   toggle a passive skill on/off')
-        info(lines.join('\n'))
-      } catch (e) {
-        info(`failed to list skills: ${(e as Error).message}`)
-      }
-      return true
-    }
-
     case '/run': {
       const cwdToUse = cwd ?? process.cwd()
       const runArgs = args.trim().split(/\s+/).filter(Boolean)
 
       if (runArgs.length === 0) {
         info('usage: /run <skill-name> [section] [task...]')
-        info('run /ls_skills to see available invoke skills.')
+        info('run /skill to see available skills.')
         return true
       }
 
@@ -405,25 +360,41 @@ use the Agent tool to spawn the ${name} subagent with this task. pass agent: "${
       const cwdToUse = cwd ?? process.cwd()
       const skillArgs = args.trim().split(/\s+/).filter(Boolean)
 
-      // /skill → redirect to /ls_passive_skills
+      // /skill → list all skills with color
       if (skillArgs.length === 0) {
-        // reuse the passive listing logic
         try {
-          const all = listSkills(cwdToUse).filter(s => s.mode === 'passive')
+          const all = listSkills(cwdToUse)
           if (all.length === 0) {
-            info('no passive skills defined yet. add `mode: passive` to the frontmatter of a skill file.')
+            info('no skills defined yet. drop a file at <cwd>/skills/<name>.md or ~/.prism/skills/<name>.md.')
             return true
           }
-          const lines = ['available passive skills (* = active):']
-          for (const s of all) {
-            const marker = skills?.active.has(s.name) ? '*' : ' '
-            lines.push(`  ${marker} ${s.name.padEnd(22)} ${s.description}`)
+
+          info('available skills:')
+          const passive = all.filter(s => s.mode === 'passive')
+          const invoke = all.filter(s => s.mode === 'invoke')
+
+          // passive skills in cyan
+          if (passive.length > 0) {
+            const lines: string[] = []
+            for (const s of passive) {
+              const marker = skills?.active.has(s.name) ? '* ' : '  '
+              lines.push(`  ${marker}${s.name.padEnd(22)} ${s.description}`)
+            }
+            info(lines.join('\n'), '#00ddff')
           }
-          lines.push('')
-          lines.push('usage: /skill <name>   toggle a passive skill on/off')
-          lines.push('       /skill clear    deactivate all')
-          lines.push('       /run <name>     invoke a skill one-shot')
-          info(lines.join('\n'))
+
+          // invoke skills in green
+          if (invoke.length > 0) {
+            const lines: string[] = []
+            for (const s of invoke) {
+              lines.push(`  ${s.name.padEnd(22)} ${s.description}`)
+            }
+            info(lines.join('\n'), '#00ff88')
+          }
+
+          info('usage: /skill <name>   toggle a passive skill on/off')
+          info('       /skill clear    deactivate all passive skills')
+          info('       /run <name>     invoke a skill one-shot')
         } catch (e) {
           info(`failed to list skills: ${(e as Error).message}`)
         }
@@ -441,7 +412,7 @@ use the Agent tool to spawn the ${name} subagent with this task. pass agent: "${
           return true
         }
         skills.setActive(new Set())
-        info('all skills deactivated.')
+        info('all passive skills deactivated.')
         return true
       }
 

@@ -69,8 +69,8 @@ describe('filterSlashCommands', () => {
     expect(filterSlashCommands('   ')).toEqual([])
   })
 
-  it('returns all 17 commands for "/" alone', () => {
-    expect(filterSlashCommands('/').length).toBe(17)
+  it('returns all 15 commands for "/" alone', () => {
+    expect(filterSlashCommands('/').length).toBe(15)
   })
 
   it('returns /max-tools and /model for "/m"', () => {
@@ -453,11 +453,11 @@ narrow security focus, one-shot
 run this when you need a security review of the current diff.`
   }
 
-  it('/skill lists available passive skills with active markers', () => {
+  it('/skill lists all skills with active markers', () => {
     writeUserSkill('security', exampleSkill())
     handleSlashCommand('/skill', 'm', makeProfile(), spy(), setMessages, spy(), undefined, undefined, undefined, projectRoot, { active, setActive })
     const text = JSON.stringify(messages)
-    expect(text).toContain('available passive skills')
+    expect(text).toContain('available skills')
     expect(text).toContain('security')
   })
 
@@ -498,7 +498,7 @@ narrow refactor focus\n\nbody.`)
     active = new Set(['security', 'refactor'])
     handleSlashCommand('/skill clear', 'm', makeProfile(), spy(), setMessages, spy(), undefined, undefined, undefined, projectRoot, { active, setActive })
     expect(active.size).toBe(0)
-    expect(JSON.stringify(messages)).toContain('all skills deactivated')
+    expect(JSON.stringify(messages)).toContain('all passive skills deactivated')
   })
 
   it('/skill clear when nothing is active is a graceful no-op', () => {
@@ -512,24 +512,14 @@ narrow refactor focus\n\nbody.`)
     expect(JSON.stringify(messages)).toContain('not available')
   })
 
-  it('/ls_skills lists invoke-mode skills', () => {
+  it('/skill lists all skills with both modes', () => {
     writeUserSkill('review', exampleInvokeSkill())
     writeUserSkill('passive-one', exampleSkill())
-    handleSlashCommand('/ls_skills', 'm', makeProfile(), spy(), setMessages, spy(), undefined, undefined, undefined, projectRoot, { active, setActive })
+    handleSlashCommand('/skill', 'm', makeProfile(), spy(), setMessages, spy(), undefined, undefined, undefined, projectRoot, { active, setActive })
     const text = JSON.stringify(messages)
-    expect(text).toContain('available invoke skills')
+    expect(text).toContain('available skills')
     expect(text).toContain('review')
-    expect(text).not.toContain('passive-one')
-  })
-
-  it('/ls_passive_skills lists passive-mode skills', () => {
-    writeUserSkill('review', exampleInvokeSkill())
-    writeUserSkill('passive-one', exampleSkill())
-    handleSlashCommand('/ls_passive_skills', 'm', makeProfile(), spy(), setMessages, spy(), undefined, undefined, undefined, projectRoot, { active, setActive })
-    const text = JSON.stringify(messages)
-    expect(text).toContain('available passive skills')
     expect(text).toContain('passive-one')
-    expect(text).not.toContain('review')
   })
 
   it('/run without args prints usage', () => {
