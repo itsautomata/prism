@@ -5,7 +5,7 @@
  */
 
 import { z } from 'zod'
-import { execSync } from 'child_process'
+import { execFileSync } from 'child_process'
 import { buildTool, type ToolResult, type ToolContext } from './Tool.js'
 import { resolve, isAbsolute } from 'path'
 
@@ -26,7 +26,7 @@ let useRipgrep: boolean | null = null
 function hasRipgrep(): boolean {
   if (useRipgrep !== null) return useRipgrep
   try {
-    execSync('which rg', { stdio: 'pipe' })
+    execFileSync('which', ['rg'], { stdio: 'pipe' })
     useRipgrep = true
   } catch {
     useRipgrep = false
@@ -48,26 +48,27 @@ export const GrepTool = buildTool<GrepInput>({
     const mode = input.output_mode ?? 'files_with_matches'
 
     try {
-      let cmd: string
+      const useRg = hasRipgrep()
+      const bin = useRg ? 'rg' : 'grep'
+      const args = useRg
+        ? buildRgArgs(input.pattern, searchPath, mode, input.glob, input.context)
+        : buildGrepArgs(input.pattern, searchPath, mode, input.glob, input.context)
 
-      if (hasRipgrep()) {
-        cmd = buildRgCommand(input.pattern, searchPath, mode, input.glob, input.context)
-      } else {
-        cmd = buildGrepCommand(input.pattern, searchPath, mode, input.glob, input.context)
-      }
-
-      const output = execSync(cmd, {
+      // execFileSync (not execSync(string)): args never touch a shell, so
+      // metacharacters in pattern/path/glob can't trigger command substitution.
+      const output = execFileSync(bin, args, {
         cwd: context.cwd,
         encoding: 'utf-8',
         timeout: 30_000,
         maxBuffer: 512 * 1024,
+        stdio: ['ignore', 'pipe', 'ignore'], // suppress stderr (replaces `2>/dev/null`)
       }).trim()
 
       if (!output) {
         return { content: `no matches for "${input.pattern}"` }
       }
 
-      // limit output
+      // truncation done in JS (replaces shell `| head -250`)
       const lines = output.split('\n')
       if (lines.length > 250) {
         return { content: lines.slice(0, 250).join('\n') + `\n\n(${lines.length - 250} more lines truncated)` }
@@ -93,54 +94,50 @@ export const GrepTool = buildTool<GrepInput>({
   checkPermissions: () => ({ behavior: 'allow' }),
 })
 
-function buildRgCommand(
+function buildRgArgs(
   pattern: string,
   path: string,
   mode: string,
   glob?: string,
   ctx?: number,
-): string {
-  const parts = ['rg']
+): string[] {
+  const args: string[] = []
 
   switch (mode) {
-    case 'files_with_matches': parts.push('-l'); break
-    case 'count': parts.push('-c'); break
-    case 'content': parts.push('-n'); break
+    case 'files_with_matches': args.push('-l'); break
+    case 'count': args.push('-c'); break
+    case 'content': args.push('-n'); break
   }
 
-  if (glob) parts.push(`--glob "${glob}"`)
-  if (ctx && mode === 'content') parts.push(`-C ${ctx}`)
+  if (glob) args.push('--glob', glob)
+  if (ctx && mode === 'content') args.push('-C', String(ctx))
 
-  parts.push(`"${pattern.replace(/"/g, '\\"')}"`)
-  parts.push(`"${path}"`)
-  parts.push('2>/dev/null')
-  parts.push('| head -250')
+  args.push(pattern)
+  args.push(path)
 
-  return parts.join(' ')
+  return args
 }
 
-function buildGrepCommand(
+function buildGrepArgs(
   pattern: string,
   path: string,
   mode: string,
   glob?: string,
   ctx?: number,
-): string {
-  const parts = ['grep', '-r', '-E']
+): string[] {
+  const args: string[] = ['-r', '-E']
 
   switch (mode) {
-    case 'files_with_matches': parts.push('-l'); break
-    case 'count': parts.push('-c'); break
-    case 'content': parts.push('-n'); break
+    case 'files_with_matches': args.push('-l'); break
+    case 'count': args.push('-c'); break
+    case 'content': args.push('-n'); break
   }
 
-  if (glob) parts.push(`--include="${glob}"`)
-  if (ctx && mode === 'content') parts.push(`-C ${ctx}`)
+  if (glob) args.push(`--include=${glob}`)
+  if (ctx && mode === 'content') args.push('-C', String(ctx))
 
-  parts.push(`"${pattern.replace(/"/g, '\\"')}"`)
-  parts.push(`"${path}"`)
-  parts.push('2>/dev/null')
-  parts.push('| head -250')
+  args.push(pattern)
+  args.push(path)
 
-  return parts.join(' ')
+  return args
 }

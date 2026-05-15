@@ -4,10 +4,12 @@
  * falls back to error message if pdftotext is not installed.
  */
 
-import { execSync } from 'child_process'
+import { execFileSync } from 'child_process'
 
 export function parsePdf(filePath: string, pages?: string): string {
-  // build pdftotext command
+  // build pdftotext args. filePath is passed as a single argv entry, never
+  // interpolated into a shell string, so shell metacharacters in the filename
+  // (e.g. `$(...)`, backticks) are inert.
   const args = ['-layout']
 
   if (pages) {
@@ -15,10 +17,10 @@ export function parsePdf(filePath: string, pages?: string): string {
     args.push('-f', String(first), '-l', String(last))
   }
 
-  args.push(`"${filePath}"`, '-')
+  args.push(filePath, '-')
 
   try {
-    const output = execSync(`pdftotext ${args.join(' ')}`, {
+    const output = execFileSync('pdftotext', args, {
       encoding: 'utf-8',
       timeout: 30_000,
       maxBuffer: 5 * 1024 * 1024,

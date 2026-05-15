@@ -5,7 +5,7 @@
  */
 
 import { z } from 'zod'
-import { execSync } from 'child_process'
+import { execFileSync } from 'child_process'
 import { buildTool, type ToolResult, type ToolContext } from './Tool.js'
 import { resolve, isAbsolute } from 'path'
 
@@ -28,23 +28,29 @@ export const GlobTool = buildTool<GlobInput>({
       : context.cwd
 
     try {
-      // use find with glob-like behavior
-      // convert glob pattern to find-compatible pattern
-      const pattern = input.pattern
+      const pattern = input.pattern.replace(/\*\*\//g, '')
 
-      const excludes = [
+      const excludeDirs = [
         'node_modules', '.git', '.venv', 'venv', '__pycache__',
         'dist', 'build', '.next', '.nuxt', 'target', 'coverage',
         '.mypy_cache', '.pytest_cache', '.egg-info',
-      ].map(d => `-not -path "*/${d}/*"`).join(' ')
+      ]
+      const excludeArgs: string[] = []
+      for (const d of excludeDirs) {
+        excludeArgs.push('-not', '-path', `*/${d}/*`)
+      }
 
-      const output = execSync(
-        `find "${searchPath}" -type f -name "${pattern.replace(/\*\*\//g, '')}" ${excludes} 2>/dev/null | head -250 | sort`,
+      // execFileSync (not execSync(string)): args never touch a shell, so
+      // metacharacters in path/pattern can't trigger command substitution.
+      const output = execFileSync(
+        'find',
+        [searchPath, '-type', 'f', '-name', pattern, ...excludeArgs],
         {
           cwd: searchPath,
           encoding: 'utf-8',
           timeout: 30_000,
           maxBuffer: 512 * 1024,
+          stdio: ['ignore', 'pipe', 'ignore'], // suppress stderr (replaces `2>/dev/null`)
         }
       ).trim()
 
@@ -52,10 +58,12 @@ export const GlobTool = buildTool<GlobInput>({
         return { content: `no files matching "${input.pattern}" in ${searchPath}` }
       }
 
-      const files = output.split('\n')
+      // sort + truncate in JS (replaces shell `| head -250 | sort`)
+      const allFiles = output.split('\n').filter(Boolean).sort()
+      const files = allFiles.slice(0, 250)
       let result = files.join('\n')
 
-      if (files.length >= 250) {
+      if (allFiles.length > 250) {
         result += '\n\n(results truncated at 250 files)'
       }
 
