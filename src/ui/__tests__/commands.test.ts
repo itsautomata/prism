@@ -595,4 +595,22 @@ one-line summary + body.`)
     expect(triggered).toContain('task: split')
     expect(triggered).not.toContain('[section:')
   })
+
+  it('/run section matched at last position does not leak into task', () => {
+    // covers the lastToken fallback: when the section keyword appears at the end of
+    // args (after a free-form task), the task string must exclude the section name.
+    writeUserSkill('commit', `commit helper
+
+## /commit (standard)
+one-line message.
+
+## /commit split
+multi-commit plan.`)
+    let triggered = ''
+    const trigger = (msg: string) => { triggered = msg }
+    handleSlashCommand('/run commit fix the bug split', 'm', makeProfile(), spy(), setMessages, spy(), undefined, undefined, trigger, projectRoot, { active, setActive })
+    expect(triggered).toContain('[section: /commit split]')
+    expect(triggered).toContain('task: fix the bug')
+    expect(triggered).not.toContain('task: fix the bug split')
+  })
 })

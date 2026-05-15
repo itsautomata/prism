@@ -284,7 +284,7 @@ export async function* query(options: QueryOptions): AsyncGenerator<QueryEvent> 
 
         // reset error counter after spawning recovery so it fires only once per cluster.
         // if the fix still fails, the next error is treated as a fresh single error,
-        // not a consecutive pair to avoids the infinite recovery loop.
+        // not a consecutive pair, avoiding the infinite recovery loop.
         consecutiveErrors = 0
 
         messages.push({

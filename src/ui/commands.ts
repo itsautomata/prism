@@ -319,22 +319,40 @@ use the Agent tool to spawn the ${name} subagent with this task. pass agent: "${
         throw e
       }
 
-      // second token is a section if it matches a known ## heading
-      // match on exact heading, last word, or last token of remaining args
-      // (handles "/run commit /commit split" → "split" matches heading "split").
+      // match section by ## heading. precedence:
+      //   second position == heading (or its last word) → exclude args[1] from task
+      //   full rest == heading → entire arg string was the section, task is empty
+      //   last position == heading's last word → exclude args[last] from task
+      // tracking which position the section occupied prevents the section keyword
+      // from leaking into the task string when it was matched at the end.
       const second = runArgs[1]
       const rest = runArgs.slice(1).join(' ').toLowerCase()
-      const lastToken = runArgs[runArgs.length - 1]?.toLowerCase().replace(/[()]/g, '') ?? ''
-      const section = second && skill.sections.length > 0
-        ? skill.sections.find(s => {
-            const last = s.split(/\s+/).pop()?.replace(/[()]/g, '') ?? ''
-            return s.toLowerCase() === second.toLowerCase()
-              || last.toLowerCase() === second.toLowerCase()
-              || s.toLowerCase() === rest
-              || last.toLowerCase() === lastToken
-          }) ?? null
-        : null
-      const task = section ? runArgs.slice(2).join(' ') : runArgs.slice(1).join(' ')
+      const lastIdx = runArgs.length - 1
+      const lastToken = runArgs[lastIdx]?.toLowerCase().replace(/[()]/g, '') ?? ''
+
+      let section: string | null = null
+      let sectionPos: 'second' | 'all' | 'last' | null = null
+
+      if (second && skill.sections.length > 0) {
+        for (const s of skill.sections) {
+          const sLower = s.toLowerCase()
+          const lastWord = (s.split(/\s+/).pop() ?? '').replace(/[()]/g, '').toLowerCase()
+          if (sLower === second.toLowerCase() || lastWord === second.toLowerCase()) {
+            section = s; sectionPos = 'second'; break
+          }
+          if (sLower === rest) {
+            section = s; sectionPos = 'all'; break
+          }
+          if (lastWord === lastToken) {
+            section = s; sectionPos = 'last'; break
+          }
+        }
+      }
+
+      const task = !section ? runArgs.slice(1).join(' ')
+        : sectionPos === 'all' ? ''
+        : sectionPos === 'second' ? runArgs.slice(2).join(' ')
+        : runArgs.slice(1, lastIdx).join(' ')
 
       if (!trigger) {
         info('skill invocation is not available in this build.')
