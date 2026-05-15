@@ -26,7 +26,7 @@ const inputSchema = z.object({
 type AgentInput = z.infer<typeof inputSchema>
 
 const DESCRIPTION =
-  'Spawn a subagent to handle a focused task. The subagent gets its own conversation and tools and returns a single string back. Pass `agent` to use a named definition (project ./agents/<name>.md or ~/.prism/agents/<name>.md); omit for the default read-only research subagent. Parameters: description (short, 3-5 words), prompt (detailed task instructions), agent (optional name).'
+  'Spawn a subagent to handle a focused task. The subagent gets its own conversation and tools and returns a single string back. Pass `agent` to use a named definition (project ./agents/<name>.md or ~/.prism/agents/<name>.md); omit for the default read-only research subagent.'
 
 export interface CreateAgentToolOptions {
   provider: ProviderBridge

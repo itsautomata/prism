@@ -173,13 +173,15 @@ understand before modifying. read before writing. verify before reporting done.
 </closing>`
 }
 
-function getTools(tools: ToolSchema[], capabilities: ModelCapabilities): string {
-  const toolList = tools.map(t => `${t.name}: ${t.description}`).join('\n')
+function getTools(_tools: ToolSchema[], capabilities: ModelCapabilities): string {
+  // tool names, descriptions, and schemas are sent separately to the provider
+  // in the request's `tools` field. duplicating them here in the system prompt
+  // costs hundreds of tokens per turn for no signal the model isn't already
+  // getting from the schema. keep only the per-turn budget hint and the
+  // tool-choice heuristic.
   const maxTools = Math.min(capabilities.maxTools, 10)
 
   return `# tools (max ${maxTools} per response)
-
-${toolList}
 
 Use the right tool: Read over cat, Edit over sed, Grep over grep, Glob over find.`
 }

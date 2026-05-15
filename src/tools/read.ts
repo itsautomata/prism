@@ -26,7 +26,7 @@ const MAX_LINES = 2000
 
 export const ReadTool = buildTool<ReadInput>({
   name: 'Read',
-  description: 'Read a file from the filesystem. Supports text, PDF, Word (.docx), Jupyter notebooks (.ipynb), and images. Parameters: file_path (absolute path), offset (optional, start line), limit (optional, number of lines), pages (optional, PDF page range).',
+  description: 'Read a file from the filesystem. Supports text, PDF, Word (.docx), Jupyter notebooks (.ipynb), and images.',
 
   inputSchema,
 
