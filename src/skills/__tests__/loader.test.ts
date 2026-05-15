@@ -105,6 +105,73 @@ rest of the body lives here.`)
     expect(skill.body).toContain('first line is the description')
     expect(skill.body).toContain('rest of the body lives here')
   })
+
+  it('defaults mode to invoke when no frontmatter', () => {
+    writeUserSkill('default', `a default skill\n\nbody here.`)
+    const skill = loadSkill('default', projectRoot)
+    expect(skill.mode).toBe('invoke')
+  })
+
+  it('parses mode: passive from frontmatter', () => {
+    writeUserSkill('passive', `---
+mode: passive
+---
+a passive skill\n\ninjected every turn.`)
+    const skill = loadSkill('passive', projectRoot)
+    expect(skill.mode).toBe('passive')
+    expect(skill.description).toBe('a passive skill')
+    expect(skill.body).not.toContain('mode:')
+  })
+
+  it('parses mode: invoke explicitly from frontmatter', () => {
+    writeUserSkill('explicit', `---
+mode: invoke
+---
+an invoke skill\n\nfire once.`)
+    const skill = loadSkill('explicit', projectRoot)
+    expect(skill.mode).toBe('invoke')
+  })
+
+  it('ignores unknown frontmatter keys', () => {
+    writeUserSkill('extra', `---
+mode: passive
+author: test
+---
+body.`)
+    const skill = loadSkill('extra', projectRoot)
+    expect(skill.mode).toBe('passive')
+    expect(skill.description).toBe('body.')
+  })
+
+  it('rejects body-after-frontmatter when empty', () => {
+    writeUserSkill('empty-body', `---
+mode: passive
+---
+
+`)
+    expect(() => loadSkill('empty-body', projectRoot)).toThrow(SkillLoadError)
+  })
+
+  it('extracts ## sections from the body', () => {
+    writeUserSkill('multi', `a multi-section skill
+
+## standard
+one-line message.
+
+## detail
+one-line summary + body.
+
+## split
+group changes into logical commits.`)
+    const skill = loadSkill('multi', projectRoot)
+    expect(skill.sections).toEqual(['standard', 'detail', 'split'])
+  })
+
+  it('returns empty sections when no ## headings', () => {
+    writeUserSkill('flat', `a flat skill\n\nno headings here.`)
+    const skill = loadSkill('flat', projectRoot)
+    expect(skill.sections).toEqual([])
+  })
 })
 
 describe('listSkills', () => {
