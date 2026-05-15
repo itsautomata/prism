@@ -8,6 +8,7 @@ import { addRule, removeRule, setMaxTools, type ModelProfile } from '../learning
 import { appendMemo, getProjectId } from '../memory/memo.js'
 import { listAgents, resolveAgent, AgentNotFoundError, AgentValidationError } from '../agents/registry.js'
 import { listSkills, loadSkill, SkillNotFoundError, SkillLoadError } from '../skills/loader.js'
+import type { SkillMode } from '../skills/loader.js'
 import type { DisplayMessage } from './MessageList.js'
 
 /**
@@ -20,6 +21,8 @@ export interface SlashCommandSpec {
   name: string
   args?: string
   desc: string
+  /** `## heading` sections for third-token autocomplete (e.g. /run commit detail). */
+  sections?: string[]
 }
 
 export const SLASH_COMMANDS: SlashCommandSpec[] = [
@@ -28,7 +31,10 @@ export const SLASH_COMMANDS: SlashCommandSpec[] = [
   { name: '/exec-plan', desc: 'exit plan mode and execute the plan' },
   { name: '/cancel-plan', desc: 'exit plan mode without executing' },
   { name: '/agent', args: '[name] [task]', desc: 'list agents, show one, or invoke a named subagent' },
-  { name: '/skill', args: '[name|clear]', desc: 'list skills, toggle one on/off, or deactivate all' },
+  { name: '/skill', args: '[name|clear]', desc: 'toggle a passive skill on/off' },
+  { name: '/run', args: '<name> [section] [task]', desc: 'invoke a skill one-shot' },
+  { name: '/ls_skills', desc: 'list available invoke-mode skills' },
+  { name: '/ls_passive_skills', desc: 'list available passive-mode skills' },
   { name: '/teach', args: '<rule>', desc: 'teach the model a rule (persisted)' },
   { name: '/rules', desc: 'show learned rules' },
   { name: '/forget', args: '<n>', desc: 'forget rule n' },
@@ -291,26 +297,132 @@ use the Agent tool to spawn the ${name} subagent with this task. pass agent: "${
       return true
     }
 
+    case '/ls_skills': {
+      const cwdToUse = cwd ?? process.cwd()
+      try {
+        const all = listSkills(cwdToUse).filter(s => s.mode === 'invoke')
+        if (all.length === 0) {
+          info('no invoke skills defined yet. drop a file at <cwd>/skills/<name>.md with no mode frontmatter (or mode: invoke).')
+          return true
+        }
+        const lines = ['available invoke skills:']
+        for (const s of all) {
+          lines.push(`  ${s.name.padEnd(22)} ${s.description}`)
+        }
+        lines.push('')
+        lines.push('usage: /run <name> [section]   invoke a skill one-shot')
+        info(lines.join('\n'))
+      } catch (e) {
+        info(`failed to list skills: ${(e as Error).message}`)
+      }
+      return true
+    }
+
+    case '/ls_passive_skills': {
+      const cwdToUse = cwd ?? process.cwd()
+      try {
+        const all = listSkills(cwdToUse).filter(s => s.mode === 'passive')
+        if (all.length === 0) {
+          info('no passive skills defined yet. add `mode: passive` to the frontmatter of a skill file.')
+          return true
+        }
+        const lines = ['available passive skills (* = active):']
+        for (const s of all) {
+          const marker = skills?.active.has(s.name) ? '*' : ' '
+          lines.push(`  ${marker} ${s.name.padEnd(22)} ${s.description}`)
+        }
+        lines.push('')
+        lines.push('usage: /skill <name>   toggle a passive skill on/off')
+        info(lines.join('\n'))
+      } catch (e) {
+        info(`failed to list skills: ${(e as Error).message}`)
+      }
+      return true
+    }
+
+    case '/run': {
+      const cwdToUse = cwd ?? process.cwd()
+      const runArgs = args.trim().split(/\s+/).filter(Boolean)
+
+      if (runArgs.length === 0) {
+        info('usage: /run <skill-name> [section] [task...]')
+        info('run /ls_skills to see available invoke skills.')
+        return true
+      }
+
+      const name = runArgs[0]!
+
+      // load skill first so we can check sections
+      let skill
+      try {
+        skill = loadSkill(name, cwdToUse)
+      } catch (e) {
+        if (e instanceof SkillNotFoundError || e instanceof SkillLoadError) {
+          info(e.message)
+          return true
+        }
+        throw e
+      }
+
+      // second token is a section if it matches a known ## heading
+      // match on exact heading, last word, or last token of remaining args
+      // (handles "/run commit /commit split" → "split" matches heading "split").
+      const second = runArgs[1]
+      const rest = runArgs.slice(1).join(' ').toLowerCase()
+      const lastToken = runArgs[runArgs.length - 1]?.toLowerCase().replace(/[()]/g, '') ?? ''
+      const section = second && skill.sections.length > 0
+        ? skill.sections.find(s => {
+            const last = s.split(/\s+/).pop()?.replace(/[()]/g, '') ?? ''
+            return s.toLowerCase() === second.toLowerCase()
+              || last.toLowerCase() === second.toLowerCase()
+              || s.toLowerCase() === rest
+              || last.toLowerCase() === lastToken
+          }) ?? null
+        : null
+      const task = section ? runArgs.slice(2).join(' ') : runArgs.slice(1).join(' ')
+
+      if (!trigger) {
+        info('skill invocation is not available in this build.')
+        return true
+      }
+
+      // build body: replace $ARGUMENTS, append task, note section
+      let body = skill.body
+      const sectionNote = section ? `\n\n[section: ${section}]` : ''
+      const taskNote = task ? `\n\ntask: ${task}` : ''
+
+      if (body.includes('$ARGUMENTS')) {
+        body = body.replace(/\$ARGUMENTS/g, task || section || '')
+      }
+
+      body = body + sectionNote + taskNote
+      info(`invoking skill "${name}"${section ? ` (${section})` : ''}...`)
+      trigger(`[the operator invoked the /${name} skill:\n\n${body}\n\nfollow the skill instructions. this is a one-shot invocation, not a persistent mode change.]`)
+      return true
+    }
+
     case '/skill': {
       const cwdToUse = cwd ?? process.cwd()
       const skillArgs = args.trim().split(/\s+/).filter(Boolean)
 
-      // /skill → list available skills with active markers
+      // /skill → redirect to /ls_passive_skills
       if (skillArgs.length === 0) {
+        // reuse the passive listing logic
         try {
-          const all = listSkills(cwdToUse)
+          const all = listSkills(cwdToUse).filter(s => s.mode === 'passive')
           if (all.length === 0) {
-            info('no skills defined yet. drop a file at <cwd>/skills/<name>.md or ~/.prism/skills/<name>.md. the first line of the file is the description; the rest is the body that lands in the prompt when the skill is active.')
+            info('no passive skills defined yet. add `mode: passive` to the frontmatter of a skill file.')
             return true
           }
-          const lines = ['available skills (* = active):']
+          const lines = ['available passive skills (* = active):']
           for (const s of all) {
             const marker = skills?.active.has(s.name) ? '*' : ' '
             lines.push(`  ${marker} ${s.name.padEnd(22)} ${s.description}`)
           }
           lines.push('')
-          lines.push('usage: /skill <name>   toggle a skill on/off for this session')
+          lines.push('usage: /skill <name>   toggle a passive skill on/off')
           lines.push('       /skill clear    deactivate all')
+          lines.push('       /run <name>     invoke a skill one-shot')
           info(lines.join('\n'))
         } catch (e) {
           info(`failed to list skills: ${(e as Error).message}`)
@@ -333,10 +445,27 @@ use the Agent tool to spawn the ${name} subagent with this task. pass agent: "${
         return true
       }
 
-      // /skill <name> → toggle
+      // /skill <name> → toggle (only passive-mode skills allowed)
       const name = skillArgs[0]!
       if (!skills) {
         info('skill state is not available in this build.')
+        return true
+      }
+
+      // validate and check mode
+      let skill
+      try {
+        skill = loadSkill(name, cwdToUse)
+      } catch (e) {
+        if (e instanceof SkillNotFoundError || e instanceof SkillLoadError) {
+          info(e.message)
+          return true
+        }
+        throw e
+      }
+
+      if (skill.mode !== 'passive') {
+        info(`skill "${name}" is not a passive skill. use /run ${name} to invoke it one-shot.`)
         return true
       }
 
@@ -346,17 +475,6 @@ use the Agent tool to spawn the ${name} subagent with this task. pass agent: "${
         skills.setActive(next)
         info(`skill "${name}" deactivated.`)
         return true
-      }
-
-      // activating: validate the file exists and loads
-      try {
-        loadSkill(name, cwdToUse)
-      } catch (e) {
-        if (e instanceof SkillNotFoundError || e instanceof SkillLoadError) {
-          info(e.message)
-          return true
-        }
-        throw e
       }
 
       const next = new Set(skills.active)

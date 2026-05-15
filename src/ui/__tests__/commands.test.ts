@@ -69,8 +69,8 @@ describe('filterSlashCommands', () => {
     expect(filterSlashCommands('   ')).toEqual([])
   })
 
-  it('returns all 14 commands for "/" alone', () => {
-    expect(filterSlashCommands('/').length).toBe(14)
+  it('returns all 17 commands for "/" alone', () => {
+    expect(filterSlashCommands('/').length).toBe(17)
   })
 
   it('returns /max-tools and /model for "/m"', () => {
@@ -436,24 +436,43 @@ describe('handleSlashCommand: /skill', () => {
   }
 
   function exampleSkill(): string {
-    return `narrow security focus for the session
+    return `---
+mode: passive
+---
+narrow security focus for the session
 
 when active, prioritize security review of every diff and flag SSRF, injection, path traversal.`
   }
 
-  it('/skill lists available skills with active markers', () => {
+  function exampleInvokeSkill(): string {
+    return `---
+mode: invoke
+---
+narrow security focus, one-shot
+
+run this when you need a security review of the current diff.`
+  }
+
+  it('/skill lists available passive skills with active markers', () => {
     writeUserSkill('security', exampleSkill())
     handleSlashCommand('/skill', 'm', makeProfile(), spy(), setMessages, spy(), undefined, undefined, undefined, projectRoot, { active, setActive })
     const text = JSON.stringify(messages)
-    expect(text).toContain('available skills')
+    expect(text).toContain('available passive skills')
     expect(text).toContain('security')
   })
 
-  it('/skill <name> activates a skill and reports it back', () => {
+  it('/skill <name> activates a passive skill and reports it back', () => {
     writeUserSkill('security', exampleSkill())
     handleSlashCommand('/skill security', 'm', makeProfile(), spy(), setMessages, spy(), undefined, undefined, undefined, projectRoot, { active, setActive })
     expect(active.has('security')).toBe(true)
     expect(JSON.stringify(messages)).toContain('activated')
+  })
+
+  it('/skill <name> reports invoke skills with hint about /run', () => {
+    writeUserSkill('invoke-only', exampleInvokeSkill())
+    handleSlashCommand('/skill invoke-only', 'm', makeProfile(), spy(), setMessages, spy(), undefined, undefined, undefined, projectRoot, { active, setActive })
+    expect(active.has('invoke-only')).toBe(false)
+    expect(JSON.stringify(messages)).toContain('/run')
   })
 
   it('/skill <name> deactivates an already-active skill (toggle)', () => {
@@ -472,7 +491,10 @@ when active, prioritize security review of every diff and flag SSRF, injection, 
 
   it('/skill clear deactivates everything', () => {
     writeUserSkill('security', exampleSkill())
-    writeUserSkill('refactor', `narrow refactor focus\n\nbody.`)
+    writeUserSkill('refactor', `---
+mode: passive
+---
+narrow refactor focus\n\nbody.`)
     active = new Set(['security', 'refactor'])
     handleSlashCommand('/skill clear', 'm', makeProfile(), spy(), setMessages, spy(), undefined, undefined, undefined, projectRoot, { active, setActive })
     expect(active.size).toBe(0)
@@ -488,5 +510,99 @@ when active, prioritize security review of every diff and flag SSRF, injection, 
     writeUserSkill('security', exampleSkill())
     handleSlashCommand('/skill security', 'm', makeProfile(), spy(), setMessages, spy(), undefined, undefined, undefined, projectRoot)
     expect(JSON.stringify(messages)).toContain('not available')
+  })
+
+  it('/ls_skills lists invoke-mode skills', () => {
+    writeUserSkill('review', exampleInvokeSkill())
+    writeUserSkill('passive-one', exampleSkill())
+    handleSlashCommand('/ls_skills', 'm', makeProfile(), spy(), setMessages, spy(), undefined, undefined, undefined, projectRoot, { active, setActive })
+    const text = JSON.stringify(messages)
+    expect(text).toContain('available invoke skills')
+    expect(text).toContain('review')
+    expect(text).not.toContain('passive-one')
+  })
+
+  it('/ls_passive_skills lists passive-mode skills', () => {
+    writeUserSkill('review', exampleInvokeSkill())
+    writeUserSkill('passive-one', exampleSkill())
+    handleSlashCommand('/ls_passive_skills', 'm', makeProfile(), spy(), setMessages, spy(), undefined, undefined, undefined, projectRoot, { active, setActive })
+    const text = JSON.stringify(messages)
+    expect(text).toContain('available passive skills')
+    expect(text).toContain('passive-one')
+    expect(text).not.toContain('review')
+  })
+
+  it('/run without args prints usage', () => {
+    handleSlashCommand('/run', 'm', makeProfile(), spy(), setMessages, spy(), undefined, undefined, undefined, projectRoot, { active, setActive })
+    const text = JSON.stringify(messages)
+    expect(text).toContain('usage')
+  })
+
+  it('/run <name> triggers a synthetic turn with skill body', () => {
+    writeUserSkill('review', exampleInvokeSkill())
+    let triggered = ''
+    const trigger = (msg: string) => { triggered = msg }
+    handleSlashCommand('/run review', 'm', makeProfile(), spy(), setMessages, spy(), undefined, undefined, trigger, projectRoot, { active, setActive })
+    expect(triggered).toContain('narrow security focus, one-shot')
+    expect(JSON.stringify(messages)).toContain('invoking skill')
+  })
+
+  it('/run <name> with task appends the task to the skill body', () => {
+    writeUserSkill('review', exampleInvokeSkill())
+    let triggered = ''
+    const trigger = (msg: string) => { triggered = msg }
+    handleSlashCommand('/run review check auth', 'm', makeProfile(), spy(), setMessages, spy(), undefined, undefined, trigger, projectRoot, { active, setActive })
+    expect(triggered).toContain('check auth')
+  })
+
+  it('/run <unknown> reports not found', () => {
+    const trigger = () => {}
+    handleSlashCommand('/run nope', 'm', makeProfile(), spy(), setMessages, spy(), undefined, undefined, trigger, projectRoot, { active, setActive })
+    expect(JSON.stringify(messages)).toContain('not found')
+  })
+
+  it('/run <name> <section> injects section note', () => {
+    writeUserSkill('multi', `a multi-section skill
+
+## standard
+one-line message.
+
+## detail
+one-line summary + body.`)
+    let triggered = ''
+    const trigger = (msg: string) => { triggered = msg }
+    handleSlashCommand('/run multi detail', 'm', makeProfile(), spy(), setMessages, spy(), undefined, undefined, trigger, projectRoot, { active, setActive })
+    expect(triggered).toContain('[section: detail]')
+    expect(triggered).toContain('one-line summary + body')
+  })
+
+  it('/run <name> <section> <task> combines section + task', () => {
+    writeUserSkill('multi', `a multi-section skill
+
+## standard
+one-line message.
+
+## detail
+one-line summary + body.`)
+    let triggered = ''
+    const trigger = (msg: string) => { triggered = msg }
+    handleSlashCommand('/run multi detail check auth', 'm', makeProfile(), spy(), setMessages, spy(), undefined, undefined, trigger, projectRoot, { active, setActive })
+    expect(triggered).toContain('[section: detail]')
+    expect(triggered).toContain('task: check auth')
+  })
+
+  it('/run <name> <unknown-token> treats it as task, not section error', () => {
+    writeUserSkill('multi', `a multi-section skill
+
+## standard
+one-line message.
+
+## detail
+one-line summary + body.`)
+    let triggered = ''
+    const trigger = (msg: string) => { triggered = msg }
+    handleSlashCommand('/run multi split', 'm', makeProfile(), spy(), setMessages, spy(), undefined, undefined, trigger, projectRoot, { active, setActive })
+    expect(triggered).toContain('task: split')
+    expect(triggered).not.toContain('[section:')
   })
 })
