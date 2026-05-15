@@ -2,17 +2,19 @@
  * permission prompt.
  * shown when a tool needs approval before executing.
  * three options: yes (once), yes (session), no.
+ *
+ * always mounted so useInput is always live — no render-cycle gap on keypress.
  */
 
-import React, { useState } from 'react'
+import React, { useState, useRef, useEffect, useCallback } from 'react'
 import { Box, Text, useInput } from 'ink'
 import { theme } from './theme.js'
 
 export type PermissionChoice = 'allow_once' | 'allow_session' | 'deny'
 
 interface PermissionPromptProps {
-  toolName: string
-  description: string
+  toolName: string | null
+  description: string | null
   onDecision: (choice: PermissionChoice) => void
 }
 
@@ -23,21 +25,40 @@ const OPTIONS: { key: string; value: PermissionChoice; label: string }[] = [
 ]
 
 export function PermissionPrompt({ toolName, description, onDecision }: PermissionPromptProps) {
+  const selectedRef = useRef(0)
   const [selected, setSelected] = useState(0)
+  const resolverRef = useRef<((choice: PermissionChoice) => void) | null>(null)
+
+  // forward the onDecision through a ref so useInput always calls the latest
+  useEffect(() => {
+    resolverRef.current = onDecision
+  }, [onDecision])
+
+  const move = useCallback((dir: -1 | 1) => {
+    const next = Math.max(0, Math.min(OPTIONS.length - 1, selectedRef.current + dir))
+    selectedRef.current = next
+    setSelected(next)
+  }, [])
 
   useInput((input, key) => {
+    if (!toolName) return // no active prompt, ignore keys
+    if (key.escape) {
+      resolverRef.current?.('deny')
+      return
+    }
     if (key.upArrow) {
-      setSelected(s => Math.max(0, s - 1))
+      move(-1)
     } else if (key.downArrow) {
-      setSelected(s => Math.min(OPTIONS.length - 1, s + 1))
+      move(1)
     } else if (key.return) {
-      onDecision(OPTIONS[selected]!.value)
+      resolverRef.current?.(OPTIONS[selectedRef.current]!.value)
     } else {
-      // quick keys
       const option = OPTIONS.find(o => o.key === input.toLowerCase())
-      if (option) onDecision(option.value)
+      if (option) resolverRef.current?.(option.value)
     }
   })
+
+  if (!toolName) return null
 
   return (
     <Box flexDirection="column" marginTop={1} marginLeft={2}>

@@ -137,7 +137,9 @@ export function App({ provider: initProvider, model: initModel, tools: baseTools
   useInput((input, key) => {
     if (!isLoading && key.ctrl && input === 'c') { exit(); return }
     if (!isLoading) return
-    if (key.escape && abortController) {
+    // escape during an active permission prompt belongs to PermissionPrompt
+    // (resolves the pending promise as 'deny'). don't double-fire by aborting here.
+    if (key.escape && abortController && !pendingPermission) {
       abortController.abort()
       setDisplayMessages(prev => [...prev, { role: 'tool_result', text: 'interrupted by user. tell prism what to do instead.', isError: false }])
     }
@@ -281,10 +283,8 @@ export function App({ provider: initProvider, model: initModel, tools: baseTools
         inPlanMode={inPlanMode} />
       <Box flexDirection="column" flexGrow={1}>
         <MessageList messages={displayMessages} />
-        {pendingPermission && (
-          <PermissionPrompt toolName={pendingPermission.toolName} description={pendingPermission.description}
-            onDecision={(choice) => { pendingPermission.resolve(choice); setPendingPermission(null) }} />
-        )}
+        <PermissionPrompt toolName={pendingPermission?.toolName ?? null} description={pendingPermission?.description ?? null}
+          onDecision={(choice) => { pendingPermission?.resolve(choice); setPendingPermission(null) }} />
       </Box>
       <StatusBar turnCount={turnCount} tokenInfo={tokenInfo} />
       <PromptInput onSubmit={handleSubmit} isLoading={isLoading} inPlanMode={inPlanMode}
