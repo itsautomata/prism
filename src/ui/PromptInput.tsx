@@ -2,15 +2,17 @@ import React, { useRef, useEffect, useState, memo, useCallback, useMemo } from '
 import { Box, Text, useInput } from 'ink'
 import { theme } from './theme.js'
 import { filterSlashCommands } from './commands.js'
+import type { SlashCommandSpec } from './commands.js'
 import { SlashHints } from './SlashHints.js'
 
 interface PromptInputProps {
   onSubmit: (text: string) => void
   isLoading: boolean
   inPlanMode?: boolean
+  invokeSkills?: SlashCommandSpec[]
 }
 
-export const PromptInput = memo(function PromptInput({ onSubmit, isLoading, inPlanMode }: PromptInputProps) {
+export const PromptInput = memo(function PromptInput({ onSubmit, isLoading, inPlanMode, invokeSkills = [] }: PromptInputProps) {
   // buffer stores keystrokes without triggering re-renders
   const bufferRef = useRef('')
   // cursor position within bufferRef. drives where new chars splice in and where
@@ -45,13 +47,34 @@ export const PromptInput = memo(function PromptInput({ onSubmit, isLoading, inPl
   }, [])
 
   // slash-completion state derived from the current display.
-  // hide hints once the user adds a space (we're past the command name into args).
-  const firstWord = display.split(' ')[0] || ''
-  const showHints = display.startsWith('/') && !display.includes(' ')
-  const matches = useMemo(() => {
+  // shows command names for the first token, skill names for /run,
+  // and section names for /run <name> <partial>.
+  const parts = display.split(/\s+/)
+  const firstWord = parts[0] || ''
+
+  // match mode: command names (first token), skill names (/run), or sections (/run <name>)
+  const isSkillCompletion = firstWord === '/run' && parts.length <= 2
+  const isSectionCompletion = firstWord === '/run' && parts.length >= 3
+  const isCmdCompletion = display.startsWith('/') && !display.includes(' ') && parts.length === 1 && !isSkillCompletion
+  const showHints = isCmdCompletion || isSkillCompletion || isSectionCompletion
+
+  const matches = useMemo<SlashCommandSpec[]>(() => {
     if (!showHints) return []
+    if (isSectionCompletion) {
+      const skillName = (parts[1] || '').toLowerCase()
+      const partial = (parts[2] || '').toLowerCase()
+      const skill = (invokeSkills ?? []).find(s => s.name.toLowerCase() === skillName)
+      if (!skill || !skill.sections) return []
+      if (!partial) return skill.sections.map(s => ({ name: s, desc: '' }))
+      return skill.sections.filter(s => s.toLowerCase().startsWith(partial)).map(s => ({ name: s, desc: '' }))
+    }
+    if (isSkillCompletion) {
+      const partial = (parts.length >= 2 ? (parts[1] || '') : '').toLowerCase()
+      if (!partial) return invokeSkills ?? []
+      return (invokeSkills ?? []).filter(s => s.name.toLowerCase().startsWith(partial))
+    }
     return filterSlashCommands(firstWord)
-  }, [showHints, firstWord])
+  }, [showHints, isSkillCompletion, isSectionCompletion, firstWord, parts, invokeSkills])
 
   // reset selection whenever the filter changes
   useEffect(() => {
@@ -81,13 +104,42 @@ export const PromptInput = memo(function PromptInput({ onSubmit, isLoading, inPl
       // fast and hits enter before the next tick, matches still reflects the
       // old display value and the wrong hint can get committed.
       if (key.tab || key.return) {
-        const liveWord = bufferRef.current.split(' ')[0] ?? ''
-        const liveShowHints = bufferRef.current.startsWith('/') && !bufferRef.current.includes(' ')
-        const liveMatches = liveShowHints ? filterSlashCommands(liveWord) : []
+        const liveBuffer = bufferRef.current
+        const liveParts = liveBuffer.split(/\s+/)
+        const liveFirst = liveParts[0] ?? ''
+        const liveIsSkillCompletion = liveFirst === '/run' && liveParts.length <= 2
+        const liveIsSectionCompletion = liveFirst === '/run' && liveParts.length >= 3
+        const liveIsCmdCompletion = liveBuffer.startsWith('/') && !liveBuffer.includes(' ') && liveParts.length === 1 && !liveIsSkillCompletion
+        const liveShowHints = liveIsCmdCompletion || liveIsSkillCompletion || liveIsSectionCompletion
+        let liveMatches: SlashCommandSpec[]
+
+        if (liveIsSectionCompletion) {
+          const skillName = (liveParts[1] || '').toLowerCase()
+          const partial = (liveParts[2] || '').toLowerCase()
+          const skill = (invokeSkills ?? []).find(s => s.name.toLowerCase() === skillName)
+          if (skill && skill.sections) {
+            liveMatches = !partial
+              ? skill.sections.map(s => ({ name: s, desc: '' }))
+              : skill.sections.filter(s => s.toLowerCase().startsWith(partial)).map(s => ({ name: s, desc: '' }))
+          } else {
+            liveMatches = []
+          }
+        } else if (liveIsSkillCompletion) {
+          const partial = liveParts.length >= 2 ? (liveParts[1] || '').toLowerCase() : ''
+          const pool = invokeSkills ?? []
+          liveMatches = !partial ? pool : pool.filter(s => s.name.toLowerCase().startsWith(partial))
+        } else {
+          liveMatches = liveShowHints ? filterSlashCommands(liveFirst) : []
+        }
+
         const selected = liveMatches[selectedHintIdx] ?? liveMatches[0]
         if (selected) {
-          const newText = selected.name + (selected.args ? ' ' : '')
-          if (bufferRef.current !== newText) {
+          const newText = liveIsSectionCompletion
+            ? `/run ${liveParts[1]} ${selected.name} `
+            : liveIsSkillCompletion
+              ? `/run ${selected.name} `
+              : selected.name + (selected.args ? ' ' : '')
+          if (liveBuffer !== newText) {
             bufferRef.current = newText
             cursorRef.current = newText.length
             flushNow()
@@ -117,7 +169,7 @@ export const PromptInput = memo(function PromptInput({ onSubmit, isLoading, inPl
       if (c > 0) {
         bufferRef.current = bufferRef.current.slice(0, c - 1) + bufferRef.current.slice(c)
         cursorRef.current = c - 1
-        flushNow()
+        scheduleDisplayUpdate()
       }
       return
     }
@@ -133,24 +185,24 @@ export const PromptInput = memo(function PromptInput({ onSubmit, isLoading, inPl
     // left/right: move cursor within buffer
     if (key.leftArrow) {
       cursorRef.current = Math.max(0, cursorRef.current - 1)
-      flushNow()
+      scheduleDisplayUpdate()
       return
     }
     if (key.rightArrow) {
       cursorRef.current = Math.min(bufferRef.current.length, cursorRef.current + 1)
-      flushNow()
+      scheduleDisplayUpdate()
       return
     }
 
     // ctrl+a / ctrl+e: jump to start / end (readline convention)
     if (key.ctrl && input === 'a') {
       cursorRef.current = 0
-      flushNow()
+      scheduleDisplayUpdate()
       return
     }
     if (key.ctrl && input === 'e') {
       cursorRef.current = bufferRef.current.length
-      flushNow()
+      scheduleDisplayUpdate()
       return
     }
 

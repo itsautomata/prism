@@ -15,12 +15,14 @@ import type { Session } from '../sessions/types.js'
 import { createAgentTool } from '../tools/agent.js'
 import type { AgentProgressEvent } from '../agents/runner.js'
 import { handleSlashCommand } from './commands.js'
+import type { SlashCommandSpec } from './commands.js'
 import { handleBashCommand } from './bash.js'
 import { switchModel } from './useModelSwitch.js'
 import type { ProviderBridge, Message, ModelCapabilities } from '../types/index.js'
 import type { Tool } from '../tools/Tool.js'
 import type { ProjectContext } from '../context/types.js'
 import type { Memory } from '../memory/inject.js'
+import { listSkills } from '../skills/loader.js'
 
 interface AppProps {
   provider: ProviderBridge
@@ -239,6 +241,17 @@ export function App({ provider: initProvider, model: initModel, tools: baseTools
     runModelLoop()
   }, [messages, runModelLoop])
 
+  // skill names for autocomplete in /run
+  const invokeSkillSpecs: SlashCommandSpec[] = useMemo(() => {
+    try {
+      return listSkills(process.cwd())
+        .filter(s => s.mode === 'invoke')
+        .map(s => ({ name: s.name, desc: s.description, sections: s.sections.length > 0 ? s.sections : undefined }))
+    } catch {
+      return []
+    }
+  }, [])
+
   const handleSubmit = useCallback(async (input: string) => {
     if (input.startsWith('!')) {
       if (handleBashCommand(input, setDisplayMessages)) return
@@ -274,7 +287,8 @@ export function App({ provider: initProvider, model: initModel, tools: baseTools
         )}
       </Box>
       <StatusBar turnCount={turnCount} tokenInfo={tokenInfo} />
-      <PromptInput onSubmit={handleSubmit} isLoading={isLoading} inPlanMode={inPlanMode} />
+      <PromptInput onSubmit={handleSubmit} isLoading={isLoading} inPlanMode={inPlanMode}
+        invokeSkills={invokeSkillSpecs} />
     </Box>
   )
 }
