@@ -5,7 +5,7 @@
 Prism is an open source coding assistant that runs locally on your machine through Ollama, or cloud through OpenRouter (300+ models).
 
 
-> actively built and tested. expect breaking changes. decentralized intelligence is cool
+> actively built and tested. expect breaking changes. decentralized intelligence is cool.
 
 ![prism](https://raw.githubusercontent.com/itsautomata/prism/main/assets/prism_3.png)
 
@@ -50,14 +50,14 @@ prism --install-completion bash      # explicit
 
 ## choose your model
 
-### local (free, ollama)
+**local (free, ollama)**
 
 ```bash
 prism                       # deepseek-r1:14b (default)
 prism qwen3:14b
 ```
 
-### cloud (openrouter, 300+ models)
+**cloud (openrouter, 300+ models)**
 
 add your API key to `~/.prism/config.toml` (created on first run), then:
 
@@ -98,12 +98,13 @@ sessions saved at `~/.prism/sessions/`.
 | Glob | find files by pattern |
 | Grep | search file contents |
 | Agent | spawn read-only subagents for parallel research |
+| useSkill | invoke a named workflow from skills/<name>.md |
 | WebFetch | fetch and convert web pages to markdown |
 | WebSearch | query a search backend, return ranked results |
 
 ## permissions
 
-write operations ask before executing. read operations auto-allow. subagents inherit read-only access; they cannot escalate to write operations.
+write operations ask before executing. read operations auto-allow. by default, subagents are read-only. user-defined agents can declare `permissions: inherit` to write through the parent's permission prompt.
 
 ```
 ◆ Bash wants to: run: git push
@@ -111,6 +112,50 @@ write operations ask before executing. read operations auto-allow. subagents inh
     [a] yes (always this session)
     [n] no
 ```
+
+## agents
+
+prism ships with a built-in read-only research subagent. define your own at `./agents/<name>.md` (project) or `~/.prism/agents/<name>.md` (user), with YAML frontmatter:
+
+```markdown
+---
+description: refactorer focused on extracting React hooks
+tools: ['Read', 'Edit', 'Grep']
+permissions: inherit
+max_turns: 8
+---
+
+you are a refactoring specialist. read the file first, propose the
+extraction, then apply it. do not touch tests.
+```
+
+`permissions: deny-writes` (default) blocks writes. `permissions: inherit` lets the subagent write through the parent's permission prompt. list with `/agent`, invoke directly with `/agent <name> <task>`, or have the model call `Agent` with `agent: "<name>"`. deny-writes agents spawned in the same turn run in parallel.
+
+## skills
+
+reusable workflows the model follows on demand. drop a markdown file at `./skills/<name>.md` or `~/.prism/skills/<name>.md`:
+
+```markdown
+---
+mode: invoke
+require-permission: true
+---
+
+scan the staged diff for security issues. report findings as a table
+with file:line and severity.
+
+## quick
+do a fast pass only.
+
+## thorough
+trace data flow from input boundaries.
+```
+
+- `mode: invoke` (default): one-shot. trigger with `/run <name> [section] [task]` or let the model call `useSkill`.
+- `mode: passive`: ambient. toggle with `/skill <name>`, the body lands in the system prompt every turn until toggled off.
+- `require-permission: true`: prompts before the model can invoke it.
+
+`##` headings become section targets, so `/run review thorough` run just that block. `/skill` lists all skills (passive in cyan, invoke in green).
 
 ## teach it
 
@@ -131,6 +176,9 @@ rules saved at `~/.prism/models/<model>.json`.
 /plan             enter plan mode (model proposes before executing)
 /exec-plan        exit plan mode and execute the plan
 /cancel-plan      exit plan mode without executing
+/agent [name]     list agents, show one, or invoke a named subagent
+/skill [name]     list skills or toggle a passive skill on/off
+/run <name>       invoke a skill one-shot (optional section, task)
 /remember <fact>  add a timestamped fact to project memo
 /teach <rule>     teach the model a rule
 /rules            show learned rules
@@ -158,7 +206,7 @@ iteration: typing feedback without `/exec-plan` keeps you in plan mode and lets 
 
 prism remembers per project across sessions in two layers:
 
-- **lens.md** at your project root: rules you enforce. git-committed, ships with the repo so collaborators inherit them.
+- **lens** at `./lens.md` or any `.prism/*.md` file (multiple files supported): rules you enforce, extra context...
 - **memo** at `~/.prism/projects/<id>/memo.md`: facts the model and you accumulate as you work. lives outside the repo. add an entry with `/remember <fact>`. each entry is timestamped with the date so the model can spot stale info.
 
 example `lens.md`:
@@ -225,6 +273,11 @@ covering:
 - memo persistence (per-project memory)
 - git context detection
 - context compaction (token counting + summary fallback)
+- subagent registry, runner, and parallel-safety
+- skill loader (frontmatter, sections, name sanitization)
+- lens loader (`.prism` directory)
+- command-injection guards (grep, glob)
+- permission prompt mount and key handling
 - tools, permissions, subagent permission contract
 - web fetching
 - `!cmd` shell escape
