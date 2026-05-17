@@ -40,7 +40,7 @@
   "scripts": {
     "build": "tsup && chmod +x dist/cli.js && npm run cp:wasms",
     "build:wasms": "./scripts/build-wasms.sh",
-    "cp:wasms": "mkdir -p dist/wasm && (cp wasm/build/*.wasm dist/wasm/ 2>/dev/null && echo 'copied grammar wasms to dist/wasm/') || echo 'warning: no grammar wasms found in wasm/build/. run npm run build:wasms first.'",
+    "cp:wasms": "./scripts/cp-wasms.sh",
     "dev": "tsx src/cli.ts",
     "check": "tsc --noEmit",
     "test": "vitest run",
