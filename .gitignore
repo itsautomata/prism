@@ -5,3 +5,5 @@ local_docs/
 .DS_Store
 projects/
 lens.md
+wasm/sources/
+wasm/build/
