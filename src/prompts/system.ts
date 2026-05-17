@@ -30,10 +30,17 @@ interface PromptOptions {
    * and its body is appended to the prompt under `# active skills`.
    */
   activeSkills?: ReadonlySet<string>
+  /**
+   * pre-formatted repo-map block (from `retrieval/repomap.ts:formatRepoMap`),
+   * computed once at session start by the caller. ambient tier-A floor: every
+   * turn sees the same map until the operator re-extracts. empty string skips
+   * the section.
+   */
+  repoMap?: string
 }
 
 export function buildSystemPrompt(options: PromptOptions): string {
-  const { capabilities, tools, cwd, profile, projectContext, memory, inPlanMode, activeSkills } = options
+  const { capabilities, tools, cwd, profile, projectContext, memory, inPlanMode, activeSkills, repoMap } = options
 
   const sections = [
     getCore(),
@@ -56,6 +63,12 @@ export function buildSystemPrompt(options: PromptOptions): string {
       sections.push(getGitGuidance())
     }
   }
+
+  // tier-A repo-map: structural floor of the codebase. lands after the scan
+  // (which describes the project at the file-tree level) and before lenses
+  // (operator intent). empty string = no repo-map computed yet or no symbols
+  // extractable; either way, skip the section.
+  if (repoMap && repoMap.length > 0) sections.push(repoMap)
 
   const lensesBlock = getLenses(cwd)
   if (lensesBlock) sections.push(lensesBlock)

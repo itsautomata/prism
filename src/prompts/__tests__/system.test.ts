@@ -130,3 +130,37 @@ describe('buildSystemPrompt: active skills section', () => {
     expect(prompt).toContain('body.')
   })
 })
+
+describe('buildSystemPrompt: repo-map injection', () => {
+  it('injects a non-empty repoMap as its own section', () => {
+    const repoMap = '# repo map\n\nsrc/foo.ts\n  function greet'
+    const prompt = buildSystemPrompt({
+      capabilities: CAPS,
+      tools: [],
+      cwd: projectRoot,
+      repoMap,
+    })
+    expect(prompt).toContain('# repo map')
+    expect(prompt).toContain('src/foo.ts')
+    expect(prompt).toContain('function greet')
+  })
+
+  it('skips the section when repoMap is empty string', () => {
+    const prompt = buildSystemPrompt({
+      capabilities: CAPS,
+      tools: [],
+      cwd: projectRoot,
+      repoMap: '',
+    })
+    expect(prompt).not.toContain('# repo map')
+  })
+
+  it('skips the section when repoMap is omitted', () => {
+    const prompt = buildSystemPrompt({
+      capabilities: CAPS,
+      tools: [],
+      cwd: projectRoot,
+    })
+    expect(prompt).not.toContain('# repo map')
+  })
+})

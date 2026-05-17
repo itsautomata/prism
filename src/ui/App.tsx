@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo } from 'react'
+import React, { useState, useCallback, useMemo, useEffect } from 'react'
 import { Box, useApp, useInput } from 'ink'
 import { Banner } from './Banner.js'
 import { MessageList, type DisplayMessage } from './MessageList.js'
@@ -24,6 +24,7 @@ import type { Tool } from '../tools/Tool.js'
 import type { ProjectContext } from '../context/types.js'
 import type { Memory } from '../memory/inject.js'
 import { listSkills } from '../skills/loader.js'
+import { extractRepoMap, formatRepoMap } from '../retrieval/repomap.js'
 
 interface AppProps {
   provider: ProviderBridge
@@ -83,6 +84,10 @@ export function App({ provider: initProvider, model: initModel, tools: baseTools
   const [abortController, setAbortController] = useState<AbortController | null>(null)
   const [inPlanMode, setInPlanMode] = useState(false)
   const [activeSkills, setActiveSkills] = useState<ReadonlySet<string>>(new Set())
+  // tier-A repo map: computed once at session start, ambient in every system
+  // prompt thereafter. failures (missing wasm dir, parse errors) leave the
+  // string empty so the section is silently skipped.
+  const [repoMap, setRepoMap] = useState<string>('')
 
   // projectContext is now passed in from cli.ts (so the user sees a startup
   // progress message during the scan). fall back to scanning here for any
@@ -118,6 +123,23 @@ export function App({ provider: initProvider, model: initModel, tools: baseTools
 
   const [skillTool] = useState<Tool>(() => createSkillTool(process.cwd()))
 
+  // build the repo map once at startup. async, so it lands a bit after the
+  // first render; downstream getSystemPrompt picks it up on the next call.
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      try {
+        const data = await extractRepoMap(process.cwd())
+        const formatted = formatRepoMap(data)
+        if (!cancelled) setRepoMap(formatted)
+      } catch {
+        // grammar wasms missing or extraction failed: skip silently. retrieval
+        // is augmentation, not a hard requirement; the rest of prism works fine.
+      }
+    })()
+    return () => { cancelled = true }
+  }, [])
+
   const tools = useMemo(() => [...baseTools, agentTool, skillTool], [baseTools, agentTool, skillTool])
   const toolSchemas = useMemo(() => tools.map(t => toolToSchema(t)), [tools])
 
@@ -135,8 +157,9 @@ export function App({ provider: initProvider, model: initModel, tools: baseTools
       memory,
       inPlanMode,
       activeSkills,
+      repoMap,
     })
-  }, [caps, toolSchemas, profile, memory, inPlanMode, activeSkills])
+  }, [caps, toolSchemas, profile, memory, inPlanMode, activeSkills, repoMap])
 
   useInput((input, key) => {
     if (!isLoading && key.ctrl && input === 'c') { exit(); return }
