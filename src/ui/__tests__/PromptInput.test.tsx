@@ -250,3 +250,114 @@ describe('PromptInput: slash autocomplete', () => {
     expect(onSubmit).not.toHaveBeenCalledWith('/cancel-plan')
   })
 })
+
+describe('PromptInput: multi-line input', () => {
+  let onSubmit: (text: string) => void
+
+  beforeEach(() => {
+    onSubmit = vi.fn() as unknown as (text: string) => void
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  // alt+enter as a raw byte sequence: ESC followed by CR. some terminals send
+  // LF instead; both routes are tested below.
+  const ALT_ENTER_CR = '\x1b\r'
+  const ALT_ENTER_LF = '\x1b\n'
+
+  it('plain enter submits the buffer (single-line behavior unchanged)', async () => {
+    const { stdin } = render(<PromptInput onSubmit={onSubmit} isLoading={false} />)
+    stdin.write('hi')
+    await tick()
+    stdin.write('\r')
+    await tick()
+    expect(onSubmit).toHaveBeenCalledWith('hi')
+  })
+
+  it('alt+enter (ESC+CR) inserts a newline instead of submitting', async () => {
+    const { stdin } = render(<PromptInput onSubmit={onSubmit} isLoading={false} />)
+    stdin.write('first')
+    await tick()
+    stdin.write(ALT_ENTER_CR)
+    await tick()
+    stdin.write('second')
+    await tick()
+    // plain enter now submits the multi-line text
+    stdin.write('\r')
+    await tick()
+    expect(onSubmit).toHaveBeenCalledWith('first\nsecond')
+  })
+
+  it('alt+enter (ESC+LF) also inserts a newline (alternate terminal route)', async () => {
+    const { stdin } = render(<PromptInput onSubmit={onSubmit} isLoading={false} />)
+    stdin.write('a')
+    await tick()
+    stdin.write(ALT_ENTER_LF)
+    await tick()
+    stdin.write('b')
+    await tick()
+    stdin.write('\r')
+    await tick()
+    expect(onSubmit).toHaveBeenCalledWith('a\nb')
+  })
+
+  it('renders inside a bordered box', async () => {
+    const { lastFrame } = render(<PromptInput onSubmit={onSubmit} isLoading={false} />)
+    await tick()
+    const frame = lastFrame() ?? ''
+    // ink's round border uses these unicode corner characters; their presence
+    // confirms the box is in place without coupling the test to exact width.
+    expect(frame).toMatch(/[╭╮╰╯]/)
+  })
+
+  it('multi-line buffer survives submit and reports the full text', async () => {
+    const { stdin } = render(<PromptInput onSubmit={onSubmit} isLoading={false} />)
+    stdin.write('line one')
+    await tick()
+    stdin.write(ALT_ENTER_CR)
+    await tick()
+    stdin.write('line two')
+    await tick()
+    stdin.write(ALT_ENTER_CR)
+    await tick()
+    stdin.write('line three')
+    await tick()
+    stdin.write('\r')
+    await tick()
+    expect(onSubmit).toHaveBeenCalledWith('line one\nline two\nline three')
+  })
+
+  it('split-event option+enter (escape then return) inserts a newline', async () => {
+    // simulates macos terminal.app / ssh path: option+enter arrives as two
+    // separate events with a tiny gap. the deferred-escape mechanism must
+    // re-classify the pair as a newline-insert and never clear the buffer.
+    const { stdin } = render(<PromptInput onSubmit={onSubmit} isLoading={false} />)
+    stdin.write('keep me')
+    await tick()
+    stdin.write('\x1b')      // escape arrives alone (NOT followed by a sequence)
+    await tick(10)           // small gap, still well inside the 50ms window
+    stdin.write('\r')        // return follows; should be reclassified as newline
+    await tick()
+    stdin.write('next')
+    await tick()
+    stdin.write('\r')        // plain return now submits
+    await tick()
+    expect(onSubmit).toHaveBeenCalledWith('keep me\nnext')
+  })
+
+  it('plain escape still clears the buffer (deferred but eventually fires)', async () => {
+    const { stdin } = render(<PromptInput onSubmit={onSubmit} isLoading={false} />)
+    stdin.write('drop this')
+    await tick()
+    stdin.write('\x1b')
+    // wait past the 50ms deferral window
+    await tick(100)
+    stdin.write('replacement')
+    await tick()
+    stdin.write('\r')
+    await tick()
+    expect(onSubmit).toHaveBeenCalledWith('replacement')
+  })
+})

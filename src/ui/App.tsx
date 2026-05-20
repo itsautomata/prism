@@ -274,8 +274,11 @@ export function App({ provider: initProvider, model: initModel, tools: baseTools
     }
 
     session.messages = messages
-    saveSession(session)
+    // saveSession is synchronous and can hold the thread for tens of ms on
+    // long conversations. flip the UI back to "ready" first; defer the save
+    // to the next tick so the render lands before the disk write.
     setTimeout(() => { setAbortController(null); setIsLoading(false) }, 0)
+    setTimeout(() => saveSession(session), 0)
   }, [provider, model, tools, messages, getSystemPrompt, session])
 
   // synthetic turn: push a hidden user message (filtered from UI display by

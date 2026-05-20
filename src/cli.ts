@@ -365,6 +365,19 @@ async function main() {
     console.log(`\x1b[2mshell completion installed to ${autoInstall.rcPath}. restart your shell or run \`exec ${autoInstall.shell}\` to enable tab completion.\x1b[0m`)
   }
 
+  // push the kitty keyboard protocol so modern terminals report modifier
+  // flags for chords like shift+enter / option+enter. unsupported terminals
+  // ignore the sequence. pop on exit restores the user's prior mode.
+  if (process.stdout.isTTY) {
+    process.stdout.write('\x1b[>1u')
+    const popKeyboardMode = () => {
+      if (process.stdout.isTTY) process.stdout.write('\x1b[<u')
+    }
+    process.on('exit', popKeyboardMode)
+    process.on('SIGINT', () => { popKeyboardMode(); process.exit(130) })
+    process.on('SIGTERM', () => { popKeyboardMode(); process.exit(143) })
+  }
+
   const { waitUntilExit } = render(
     React.createElement(App, {
       provider,
