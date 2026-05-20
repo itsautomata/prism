@@ -55,7 +55,7 @@ describe('migrateConfig', () => {
     const after = readFileSync(getConfigPath(), 'utf-8')
     // appended; original lines preserved verbatim
     expect(after).toContain('[tuning]')
-    expect(after).toContain('repomap_max_lines = 200')
+    expect(after).toContain('repomap_max_lines = 500')
     expect(after).toContain('default_model = "qwen3:14b"')
     expect(after).toContain('api_key = "sk-or-existing"')
   })
@@ -81,7 +81,7 @@ describe('migrateConfig', () => {
     const cfg = loadConfig()
     // appended block defaults must be active
     expect(cfg.tuning.repomap_max_files).toBe(500)
-    expect(cfg.tuning.repomap_max_lines).toBe(200)
+    expect(cfg.tuning.repomap_max_lines).toBe(500)
     expect(cfg.tuning.compaction_threshold).toBe(0.8)
     // the user's pre-existing value survives intact
     expect(cfg.default_model).toBe('test-model')
@@ -90,12 +90,13 @@ describe('migrateConfig', () => {
   it('preserves user-tuned values when [tuning] already exists with overrides', () => {
     initConfig()
     const text = readFileSync(getConfigPath(), 'utf-8')
-    // simulate a user who has already tuned a value
-    const tweaked = text.replace('repomap_max_lines = 200', 'repomap_max_lines = 600')
+    // a custom value distinct from the default, used to confirm an existing
+    // user-tuned entry is preserved verbatim when migrateConfig runs.
+    const tweaked = text.replace(/repomap_max_lines = \d+/, 'repomap_max_lines = 1234')
     writeFileSync(getConfigPath(), tweaked, 'utf-8')
 
     expect(migrateConfig()).toEqual([])
-    expect(loadConfig().tuning.repomap_max_lines).toBe(600)
+    expect(loadConfig().tuning.repomap_max_lines).toBe(1234)
   })
 })
 
@@ -108,7 +109,7 @@ describe('initConfig', () => {
     const text = readFileSync(getConfigPath(), 'utf-8')
     expect(text).toContain('[openrouter]')
     expect(text).toContain('[tuning]')
-    expect(text).toContain('repomap_max_lines = 200')
+    expect(text).toContain('repomap_max_lines = 500')
   })
 
   it('does not overwrite an existing config', () => {

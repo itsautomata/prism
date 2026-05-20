@@ -102,7 +102,7 @@ export interface PrismConfig {
 
 const TUNING_DEFAULTS: TuningConfig = {
   repomap_max_files: 500,
-  repomap_max_lines: 200,
+  repomap_max_lines: 500,
   repomap_max_symbols_per_file: 10,
   lens_max_bytes: 64 * 1024,
   bash_timeout_ms: 30_000,
@@ -127,7 +127,9 @@ const DEFAULTS: PrismConfig = {
  * env vars take priority over config file.
  */
 export function loadConfig(): PrismConfig {
-  const config = { ...DEFAULTS }
+  // deep clone so mutations to nested objects (the per-provider tables and
+  // [tuning]) never leak back into the shared DEFAULTS reference.
+  const config: PrismConfig = structuredClone(DEFAULTS)
 
   // read config file if it exists
   if (existsSync(CONFIG_PATH)) {
@@ -190,7 +192,7 @@ repomap_max_files = 500
 # is truncated and replaced with a "...and N more files" footer the model can
 # act on with Read / Grep. higher = more structure visible, more tokens/turn.
 # override per-session: --max-lines <n>
-repomap_max_lines = 200
+repomap_max_lines = 500
 
 # symbols shown per file in the rendered map. higher = denser detail per file,
 # fewer files fit. lower = more files visible, less detail each.
