@@ -25,6 +25,7 @@ import { RECOVERY_AGENT } from '../agents/definition.js'
 import { trimOldToolResults } from '../compact/trimmer.js'
 import { snipOldTurns } from '../compact/snip.js'
 import { summarizeOldTurns } from '../compact/summarize.js'
+import { loadConfig } from '../config/config.js'
 
 export type QueryEvent =
   | { type: 'text'; text: string }
@@ -71,12 +72,21 @@ export async function* query(options: QueryOptions): AsyncGenerator<QueryEvent> 
     signal,
   }
 
+  // tuning read once at session start — re-reading on every loop would just
+  // add file IO with no observable benefit, since values are stable per process.
+  const { tuning } = loadConfig()
+  const compactionThreshold = tuning.compaction_threshold
+  // the secondary snip threshold is intentionally hard-coded relative to the
+  // primary: snip earlier (0.75× of the primary) gives summarize room to breathe.
+  const snipThreshold = compactionThreshold * 0.75
+  const emptyTurnNudgeCap = tuning.empty_turn_nudge_cap
+
   let turnCount = 0
   let consecutiveErrors = 0
   let consecutiveEmptyTurns = 0
   // session-sticky: once summarize fails, stop retrying it. fall back to snip
   // for the remainder of the session. avoids burning N model calls on the
-  // same compaction failure when the user has already crossed the 80% threshold.
+  // same compaction failure when the user has already crossed the threshold.
   let summarizeBlocked = false
 
   while (true) {
@@ -98,7 +108,7 @@ export async function* query(options: QueryOptions): AsyncGenerator<QueryEvent> 
     const tokenCount = countConversationTokens(messages)
     yield { type: 'token_update', used: tokenCount, max: capabilities.maxContextTokens, formatted: `${formatTokens(tokenCount)} / ${formatTokens(capabilities.maxContextTokens)}` }
 
-    if (tokenCount > capabilities.maxContextTokens * 0.8) {
+    if (tokenCount > capabilities.maxContextTokens * compactionThreshold) {
       let compacted = false
       if (!summarizeBlocked) {
         const result = await summarizeOldTurns(messages, provider, model)
@@ -115,7 +125,7 @@ export async function* query(options: QueryOptions): AsyncGenerator<QueryEvent> 
         const snipped = snipOldTurns(messages)
         messages.splice(0, messages.length, ...snipped)
       }
-    } else if (tokenCount > capabilities.maxContextTokens * 0.6) {
+    } else if (tokenCount > capabilities.maxContextTokens * snipThreshold) {
       const snipped = snipOldTurns(messages)
       messages.splice(0, messages.length, ...snipped)
     }
@@ -183,7 +193,7 @@ export async function* query(options: QueryOptions): AsyncGenerator<QueryEvent> 
     // common after weaker models run tools but fail to synthesize on the next
     // turn. nudge them once or twice; cap to prevent infinite loops.
     if (toolUseBlocks.length === 0 && !hasText) {
-      if (consecutiveEmptyTurns >= 2) {
+      if (consecutiveEmptyTurns >= emptyTurnNudgeCap) {
         yield { type: 'done', reason: 'empty_turn_cap', turnCount }
         return
       }

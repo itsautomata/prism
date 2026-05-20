@@ -16,6 +16,7 @@ import { detectLanguage, knownLanguages } from './languages.js'
 import { extractSymbols, type Symbol } from './treesitter.js'
 import { getCached, setCached } from './cache.js'
 import { getProjectId } from '../memory/memo.js'
+import { loadConfig } from '../config/config.js'
 
 // duplicated from src/context/scanner.ts on purpose: kept local so the
 // retrieval layer doesn't pull a circular dep through the scanner module.
@@ -63,17 +64,18 @@ export interface RepoMapOptions {
   extraIgnore?: ReadonlySet<string>
 }
 
-const DEFAULT_MAX_FILES = 500
-const DEFAULT_MAX_SYMBOLS_PER_FILE = 10
-
 /**
  * walk the project tree and produce a structural map keyed by file.
  * uses the symbol cache, parses on miss, writes back. ignores files whose
  * extension has no grammar, plus the standard build/cache directories.
+ *
+ * caller-supplied `opts` win; missing values fall back to `config.tuning`.
+ * CLI plumbing (cli.ts) injects opts when --max-files / --max-lines are set.
  */
 export async function extractRepoMap(cwd: string, opts: RepoMapOptions = {}): Promise<RepoMapData> {
-  const maxFiles = opts.maxFiles ?? DEFAULT_MAX_FILES
-  const maxSymbolsPerFile = opts.maxSymbolsPerFile ?? DEFAULT_MAX_SYMBOLS_PER_FILE
+  const { tuning } = loadConfig()
+  const maxFiles = opts.maxFiles ?? tuning.repomap_max_files
+  const maxSymbolsPerFile = opts.maxSymbolsPerFile ?? tuning.repomap_max_symbols_per_file
   const ignore = new Set([...IGNORE_DIRS, ...(opts.extraIgnore ?? [])])
 
   const supported = knownLanguages()
@@ -155,7 +157,7 @@ export async function extractRepoMap(cwd: string, opts: RepoMapOptions = {}): Pr
  * a "...and N more files" footer so the size stays bounded.
  */
 export function formatRepoMap(data: RepoMapData, opts: { maxLines?: number } = {}): string {
-  const maxLines = opts.maxLines ?? 200
+  const maxLines = opts.maxLines ?? loadConfig().tuning.repomap_max_lines
   if (data.entries.length === 0) return ''
 
   const lines: string[] = ['# repo map', '']

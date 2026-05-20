@@ -9,16 +9,16 @@
 
 import { existsSync, readFileSync } from 'fs'
 import { join } from 'path'
-
-const MAX_LENS_BYTES = 64 * 1024  // 64KB cap, sanity bound for stray huge files
+import { loadConfig } from '../config/config.js'
 
 export function loadLens(cwd: string): string | null {
   const path = join(cwd, 'lens.md')
   if (!existsSync(path)) return null
   try {
     const content = readFileSync(path, 'utf-8')
-    if (content.length > MAX_LENS_BYTES) {
-      return content.slice(0, MAX_LENS_BYTES) + '\n\n[truncated: lens.md exceeds 64KB cap]'
+    const maxBytes = loadConfig().tuning.lens_max_bytes
+    if (content.length > maxBytes) {
+      return content.slice(0, maxBytes) + `\n\n[truncated: lens.md exceeds ${maxBytes} bytes]`
     }
     return content.trim() || null
   } catch {

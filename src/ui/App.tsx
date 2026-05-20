@@ -35,6 +35,16 @@ interface AppProps {
   initialMessages?: Message[]
   projectContext?: ProjectContext
   memory?: Memory
+  /**
+   * per-session overrides for the repo-map retrieval pass. all fields optional:
+   * undefined values fall back to config.tuning defaults. `skip: true` bypasses
+   * extraction entirely (--no-repomap).
+   */
+  repoMapOverride?: {
+    maxFiles?: number
+    maxLines?: number
+    skip?: boolean
+  }
 }
 
 // filter internal messages when rebuilding display from session
@@ -67,7 +77,7 @@ function rebuildDisplayMessages(messages?: Message[]): DisplayMessage[] {
   return display
 }
 
-export function App({ provider: initProvider, model: initModel, tools: baseTools, capabilities: initCaps, session, initialMessages, projectContext: initProjectContext, memory }: AppProps) {
+export function App({ provider: initProvider, model: initModel, tools: baseTools, capabilities: initCaps, session, initialMessages, projectContext: initProjectContext, memory, repoMapOverride }: AppProps) {
   const [provider, setProvider] = useState<ProviderBridge>(initProvider)
   const [model, setModel] = useState(initModel)
   const [caps, setCaps] = useState(initCaps)
@@ -125,12 +135,18 @@ export function App({ provider: initProvider, model: initModel, tools: baseTools
 
   // build the repo map once at startup. async, so it lands a bit after the
   // first render; downstream getSystemPrompt picks it up on the next call.
+  // `repoMapOverride.skip` (set by --no-repomap) bypasses the whole pass.
   useEffect(() => {
+    if (repoMapOverride?.skip) return
     let cancelled = false
     ;(async () => {
       try {
-        const data = await extractRepoMap(process.cwd())
-        const formatted = formatRepoMap(data)
+        const data = await extractRepoMap(process.cwd(), {
+          ...(repoMapOverride?.maxFiles ? { maxFiles: repoMapOverride.maxFiles } : {}),
+        })
+        const formatted = formatRepoMap(data, {
+          ...(repoMapOverride?.maxLines ? { maxLines: repoMapOverride.maxLines } : {}),
+        })
         if (!cancelled) setRepoMap(formatted)
       } catch {
         // grammar wasms missing or extraction failed: skip silently. retrieval

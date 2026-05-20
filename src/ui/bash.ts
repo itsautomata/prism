@@ -8,9 +8,7 @@
 import type React from 'react'
 import { execSync } from 'child_process'
 import type { DisplayMessage } from './MessageList.js'
-
-const MAX_OUTPUT = 512 * 1024
-const TIMEOUT_MS = 30_000
+import { loadConfig } from '../config/config.js'
 
 export function handleBashCommand(
   input: string,
@@ -22,14 +20,15 @@ export function handleBashCommand(
 
   setMessages(prev => [...prev, { role: 'tool_call', text: '', toolName: `! ${cmd}` }])
 
+  const { tuning } = loadConfig()
   let output: string
   let isError = false
   try {
     output = execSync(cmd, {
       cwd: process.cwd(),
       encoding: 'utf-8',
-      timeout: TIMEOUT_MS,
-      maxBuffer: MAX_OUTPUT,
+      timeout: tuning.bash_timeout_ms,
+      maxBuffer: tuning.bash_max_output_bytes,
       stdio: ['pipe', 'pipe', 'pipe'],
     }).trim() || '(no output)'
   } catch (e: unknown) {

@@ -7,8 +7,7 @@
 import { z } from 'zod'
 import { execSync, execFileSync } from 'child_process'
 import { buildTool, type ToolResult, type ToolContext, type PermissionResult } from './Tool.js'
-
-const MAX_OUTPUT = 512 * 1024 // 512KB
+import { loadConfig } from '../config/config.js'
 
 // commands that are safe to run concurrently (read-only)
 const SAFE_COMMANDS = new Set([
@@ -52,13 +51,14 @@ export const BashTool = buildTool<BashInput>({
   inputSchema,
 
   async call(input: BashInput, context: ToolContext): Promise<ToolResult> {
+    const maxOutput = loadConfig().tuning.bash_max_output_bytes
     const timeout = Math.min(input.timeout || 120_000, 600_000)
 
     try {
       const output = execSync(input.command, {
         cwd: context.cwd,
         timeout,
-        maxBuffer: MAX_OUTPUT,
+        maxBuffer: maxOutput,
         encoding: 'utf-8',
         stdio: ['pipe', 'pipe', 'pipe'],
         env: { ...process.env },
@@ -67,9 +67,9 @@ export const BashTool = buildTool<BashInput>({
       const stderr = '' // execSync throws on non-zero, stderr captured in error
       const result = output.trim()
 
-      if (result.length > MAX_OUTPUT) {
+      if (result.length > maxOutput) {
         return {
-          content: result.slice(0, MAX_OUTPUT) + '\n\n[output truncated]',
+          content: result.slice(0, maxOutput) + '\n\n[output truncated]',
         }
       }
 

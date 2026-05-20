@@ -121,6 +121,11 @@ async function main() {
   -c, --continue        resume last session in this directory
   -r, --resume <n|id>   resume the nth recent session, or by full id (see --sessions)
   --max-tokens <n>      max output tokens per response (default: 10000)
+  --max-files <n>       repo-map walk cap (override [tuning].repomap_max_files)
+  --max-lines <n>       repo-map render cap (override [tuning].repomap_max_lines)
+  --no-repomap          skip the repo-map retrieval pass entirely
+  --no-scan             skip the live project scan
+  --no-memory           skip lens.md + persistent memo
   --config              show config file path
   --sessions            list recent sessions
   -h, --help            show this help`)
@@ -143,6 +148,27 @@ async function main() {
     }
     maxTokens = parsed
   }
+
+  // tuning overrides that the CLI exposes for repo-map. these win over the
+  // config.toml [tuning] values and the in-source defaults, scoped to this run.
+  const parseFlagNumber = (flag: string, label: string): number | undefined => {
+    const idx = args.indexOf(flag)
+    if (idx === -1) return undefined
+    const raw = args[idx + 1]
+    if (!raw || raw.startsWith('-')) {
+      console.error(`\x1b[31m${flag} requires a number (e.g. ${flag} ${label})\x1b[0m`)
+      process.exit(1)
+    }
+    const parsed = parseInt(raw, 10)
+    if (isNaN(parsed) || parsed <= 0) {
+      console.error(`\x1b[31m${flag} must be a positive number, got: ${raw}\x1b[0m`)
+      process.exit(1)
+    }
+    return parsed
+  }
+  const maxFiles = parseFlagNumber('--max-files', '500')
+  const maxLines = parseFlagNumber('--max-lines', '200')
+  const skipRepoMap = args.includes('--no-repomap')
 
   // skip the value following any flag that takes a value
   const valueFlags = valueTakingFlagTokens()
@@ -342,6 +368,7 @@ async function main() {
       initialMessages,
       projectContext,
       memory,
+      repoMapOverride: { maxFiles, maxLines, skip: skipRepoMap },
     })
   )
 
