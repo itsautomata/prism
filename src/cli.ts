@@ -18,7 +18,7 @@ import { App } from './ui/App.js'
 import { OllamaProvider } from './providers/ollama.js'
 import { OpenRouterProvider } from './providers/openrouter.js'
 import { BashTool, ReadTool, EditTool, WriteTool, GlobTool, GrepTool, WebFetchTool, WebSearchTool } from './tools/index.js'
-import { loadConfig, initConfig, getConfigPath } from './config/config.js'
+import { loadConfig, initConfig, migrateConfig, getConfigPath } from './config/config.js'
 import { createSession, findLastSession, listSessions, loadSession } from './sessions/store.js'
 import { allFlagTokens, complete, valueTakingFlagTokens } from './completion/spec.js'
 import { homedir } from 'os'
@@ -98,6 +98,13 @@ async function main() {
   }
 
   initConfig()
+  // bring older configs forward without losing user values. silent when
+  // nothing's missing; surfaces a one-line notice on first run after a new
+  // [section] is shipped, so the user knows their file just gained knobs.
+  const migrated = migrateConfig()
+  if (migrated.length > 0) {
+    console.log(`\x1b[2mconfig migrated: added [${migrated.join('], [')}] to ${getConfigPath()}\x1b[0m`)
+  }
 
   const config = loadConfig()
 

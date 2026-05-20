@@ -167,37 +167,12 @@ export function loadConfig(): PrismConfig {
 }
 
 /**
- * create default config file if it doesn't exist.
+ * the `[tuning]` block as written to config.toml. shared between initConfig
+ * (which writes the whole file when it doesn't exist) and migrateConfig
+ * (which appends this block to an older file that pre-dates the tuning
+ * section). a single source of truth means the inline comments stay in sync.
  */
-export function initConfig(): void {
-  if (existsSync(CONFIG_PATH)) return
-
-  if (!existsSync(PRISM_DIR)) {
-    mkdirSync(PRISM_DIR, { recursive: true })
-  }
-
-  const template = `# prism config
-# env vars override these values. CLI flags override env vars and config.
-
-default_provider = "ollama"
-default_model = "deepseek-r1:14b"
-
-[openrouter]
-api_key = ""
-
-[anthropic]
-api_key = ""
-
-[openai]
-api_key = ""
-
-[google]
-api_key = ""
-
-[ollama]
-base_url = "http://localhost:11434"
-
-# global tuning knobs. every key is optional. missing entries use the defaults
+const TUNING_BLOCK = `# global tuning knobs. every key is optional. missing entries use the defaults
 # shown here. CLI flags (--max-files, --max-lines, --no-repomap) override these
 # on a per-session basis.
 [tuning]
@@ -252,7 +227,101 @@ compaction_threshold = 0.8
 empty_turn_nudge_cap = 2
 `
 
-  writeFileSync(CONFIG_PATH, template, 'utf-8')
+/**
+ * the static top of config.toml: identity, provider plumbing, api keys.
+ * everything below this is a [section] block that migrateConfig knows how to
+ * append individually when an existing config is missing it.
+ */
+const BASE_TEMPLATE = `# prism config
+# env vars override these values. CLI flags override env vars and config.
+
+default_provider = "ollama"
+default_model = "deepseek-r1:14b"
+
+[openrouter]
+api_key = ""
+
+[anthropic]
+api_key = ""
+
+[openai]
+api_key = ""
+
+[google]
+api_key = ""
+
+[ollama]
+base_url = "http://localhost:11434"
+`
+
+/**
+ * sections that prism expects to find in config.toml. when a config file is
+ * older than the current binary and missing one of these, migrateConfig
+ * appends the default block at the end of the file. new sections added
+ * here in future versions will be auto-migrated on the next launch.
+ *
+ * non-destructive: existing keys / sections / comments are never touched.
+ */
+const REQUIRED_TABLES: Array<{ name: string; block: string }> = [
+  { name: 'tuning', block: TUNING_BLOCK },
+]
+
+/**
+ * create the default config file if it doesn't exist. when it does exist,
+ * delegates nothing — see migrateConfig for the upgrade path.
+ */
+export function initConfig(): void {
+  if (existsSync(CONFIG_PATH)) return
+
+  if (!existsSync(PRISM_DIR)) {
+    mkdirSync(PRISM_DIR, { recursive: true })
+  }
+
+  const fresh = BASE_TEMPLATE + '\n' + TUNING_BLOCK
+  writeFileSync(CONFIG_PATH, fresh, 'utf-8')
+}
+
+/**
+ * append any [section] blocks that prism now expects but the user's existing
+ * config.toml doesn't yet contain. returns the list of section names that
+ * were added (empty array if nothing to do). callers can surface this to the
+ * user as a one-time notice.
+ *
+ * never overwrites or reorders existing content. silently no-ops when the
+ * file is absent (initConfig handles that case) or unreadable.
+ */
+export function migrateConfig(): string[] {
+  if (!existsSync(CONFIG_PATH)) return []
+
+  let text: string
+  try {
+    text = readFileSync(CONFIG_PATH, 'utf-8')
+  } catch {
+    return []
+  }
+
+  let parsed: Record<string, any>
+  try {
+    parsed = parseToml(text)
+  } catch {
+    return []
+  }
+
+  const missing = REQUIRED_TABLES.filter(t => !parsed[t.name])
+  if (missing.length === 0) return []
+
+  // append blocks at the bottom of the file. join with a leading newline so
+  // we never collide with the previous section's last line, and trim any
+  // trailing whitespace from the existing content first for a clean seam.
+  const head = text.replace(/\s+$/, '')
+  const appended = missing.map(t => t.block).join('\n')
+  const next = head + '\n\n' + appended + '\n'
+  try {
+    writeFileSync(CONFIG_PATH, next, 'utf-8')
+    return missing.map(t => t.name)
+  } catch {
+    return []
+  }
 }
 
 /**
