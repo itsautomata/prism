@@ -106,10 +106,32 @@ interface OpenAIStreamChunk {
     }
     finish_reason: string | null
   }[]
-  usage?: {
-    prompt_tokens: number
-    completion_tokens: number
-  }
+  usage?: UpstreamUsage
+}
+
+/**
+ * usage payload from openrouter.
+ *   - openai:    prompt_tokens_details.cached_tokens
+ *   - anthropic: cache_read_input_tokens (+ cache_creation_input_tokens for newly stored)
+ *   - deepseek:  prompt_cache_hit_tokens
+ */
+interface UpstreamUsage {
+  prompt_tokens: number
+  completion_tokens: number
+  prompt_tokens_details?: { cached_tokens?: number }
+  cache_read_input_tokens?: number
+  cache_creation_input_tokens?: number
+  prompt_cache_hit_tokens?: number
+}
+
+function extractCachedTokens(u: UpstreamUsage | undefined): number {
+  if (!u) return 0
+  return (
+    u.prompt_tokens_details?.cached_tokens ??
+    u.cache_read_input_tokens ??
+    u.prompt_cache_hit_tokens ??
+    0
+  )
 }
 
 export class OpenRouterProvider implements ProviderBridge {
@@ -182,6 +204,7 @@ export class OpenRouterProvider implements ProviderBridge {
     const messageId = crypto.randomUUID()
     let inputTokens = 0
     let outputTokens = 0
+    let cachedInputTokens = 0
     const toolCalls: Map<number, { id: string; name: string; args: string }> = new Map()
 
     yield { type: 'message_start', id: messageId }
@@ -256,6 +279,7 @@ export class OpenRouterProvider implements ProviderBridge {
         if (chunk.usage) {
           inputTokens = chunk.usage.prompt_tokens
           outputTokens = chunk.usage.completion_tokens
+          cachedInputTokens = extractCachedTokens(chunk.usage)
         }
       }
     }
@@ -264,7 +288,7 @@ export class OpenRouterProvider implements ProviderBridge {
 
     yield {
       type: 'message_end',
-      usage: { inputTokens, outputTokens },
+      usage: { inputTokens, outputTokens, cachedInputTokens },
       stopReason,
     }
   }
@@ -292,7 +316,7 @@ export class OpenRouterProvider implements ProviderBridge {
     const data = await res.json() as {
       id: string
       choices: { message: { content?: string; tool_calls?: OpenAIToolCall[] }; finish_reason: string }[]
-      usage?: { prompt_tokens: number; completion_tokens: number }
+      usage?: UpstreamUsage
     }
 
     const choice = data.choices?.[0]
@@ -327,6 +351,7 @@ export class OpenRouterProvider implements ProviderBridge {
       usage: {
         inputTokens: data.usage?.prompt_tokens || 0,
         outputTokens: data.usage?.completion_tokens || 0,
+        cachedInputTokens: extractCachedTokens(data.usage),
       },
       stopReason: hasTools ? 'tool_use' : 'end_turn',
     }

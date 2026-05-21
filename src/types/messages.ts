@@ -61,4 +61,7 @@ export interface Message {
 export interface Usage {
   inputTokens: number
   outputTokens: number
+  /** input tokens served from the provider's prompt cache. 0 when the
+   * provider doesn't report cache hits, or when no cache fired. */
+  cachedInputTokens?: number
 }
