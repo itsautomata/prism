@@ -14,7 +14,7 @@ vi.mock('os', async () => {
   return { ...actual, homedir: () => TEST_HOME }
 })
 
-import { buildSystemPrompt } from '../system.js'
+import { buildSystemPrompt, __resetStaticPromptCache } from '../system.js'
 import type { ModelCapabilities } from '../../types/index.js'
 
 const CAPS: ModelCapabilities = {
@@ -32,6 +32,9 @@ let projectRoot: string
 beforeEach(() => {
   projectRoot = mkdtempSync(join(tmpdir(), 'prism-prompt-project-'))
   rmSync(`${TEST_HOME}/.prism/agents`, { recursive: true, force: true })
+  // each test gets a fresh static cache so insert-order or ref-id leakage
+  // from a prior test can't bleed in
+  __resetStaticPromptCache()
 })
 
 afterAll(() => {
@@ -162,5 +165,108 @@ describe('buildSystemPrompt: repo-map injection', () => {
       cwd: projectRoot,
     })
     expect(prompt).not.toContain('# repo map')
+  })
+})
+
+describe('buildSystemPrompt: static prefix + dynamic suffix layering', () => {
+  it('places dynamic sections (active skills, repo map, plan mode) AFTER all static content', () => {
+    // build skills on disk so the active block has something to load
+    mkdirSync(join(projectRoot, 'skills'), { recursive: true })
+    writeFileSync(join(projectRoot, 'skills', 'demo.md'), 'demo body text', 'utf-8')
+
+    const prompt = buildSystemPrompt({
+      capabilities: CAPS,
+      tools: [],
+      cwd: projectRoot,
+      activeSkills: new Set(['demo']),
+      repoMap: '# repo map\n\nsrc/foo.ts\n  function bar',
+      inPlanMode: true,
+    })
+
+    // every dynamic anchor lands after every static anchor it could conflict
+    // with. ordering: static (core, env) ... dynamic (active skills, repo map, plan mode)
+    const idxCore = prompt.indexOf('<identity>')
+    const idxEnv = prompt.indexOf('cwd:')
+    const idxSkills = prompt.indexOf('# active skills')
+    const idxRepo = prompt.indexOf('# repo map')
+    const idxPlan = prompt.indexOf('## plan mode')
+
+    expect(idxCore).toBeGreaterThanOrEqual(0)
+    expect(idxEnv).toBeGreaterThan(idxCore)
+    expect(idxSkills).toBeGreaterThan(idxEnv)
+    expect(idxRepo).toBeGreaterThan(idxSkills)
+    expect(idxPlan).toBeGreaterThan(idxRepo)
+  })
+
+  it('reuses the cached static prefix when inputs are ref-equal across calls', () => {
+    // memoize the ref of a "memory" object across calls. the cache key
+    // depends on object identity, so two calls with the same ref must
+    // produce identical output without recomposing.
+    const memory = { lens: null, memo: 'remember me' }
+    const a = buildSystemPrompt({
+      capabilities: CAPS,
+      tools: [],
+      cwd: projectRoot,
+      memory,
+    })
+    const b = buildSystemPrompt({
+      capabilities: CAPS,
+      tools: [],
+      cwd: projectRoot,
+      memory,
+    })
+    expect(a).toBe(b)
+  })
+
+  it('recomposes the static prefix when the memory ref changes', () => {
+    const a = buildSystemPrompt({
+      capabilities: CAPS,
+      tools: [],
+      cwd: projectRoot,
+      memory: { lens: null, memo: 'first' },
+    })
+    const b = buildSystemPrompt({
+      capabilities: CAPS,
+      tools: [],
+      cwd: projectRoot,
+      memory: { lens: null, memo: 'second' },
+    })
+    expect(a).not.toBe(b)
+    expect(a).toContain('first')
+    expect(b).toContain('second')
+    expect(b).not.toContain('first')
+  })
+
+  it('active skills section is byte-stable regardless of insertion order', () => {
+    mkdirSync(join(projectRoot, 'skills'), { recursive: true })
+    writeFileSync(join(projectRoot, 'skills', 'alpha.md'), 'alpha body', 'utf-8')
+    writeFileSync(join(projectRoot, 'skills', 'beta.md'), 'beta body', 'utf-8')
+
+    // insert in two orders. without sorting, JS Set iteration order would
+    // produce different prompts. with sorting, they're identical.
+    const setA = new Set(['alpha', 'beta'])
+    const setB = new Set(['beta', 'alpha'])
+
+    const promptA = buildSystemPrompt({ capabilities: CAPS, tools: [], cwd: projectRoot, activeSkills: setA })
+    const promptB = buildSystemPrompt({ capabilities: CAPS, tools: [], cwd: projectRoot, activeSkills: setB })
+
+    expect(promptA).toBe(promptB)
+  })
+
+  it('plan mode addendum stays in the dynamic suffix (cache survives the toggle)', () => {
+    // same memory ref both times. only inPlanMode differs. the static portion
+    // must remain identical; only the suffix changes.
+    const memory = { lens: null, memo: 'stable' }
+
+    const off = buildSystemPrompt({ capabilities: CAPS, tools: [], cwd: projectRoot, memory, inPlanMode: false })
+    const on = buildSystemPrompt({ capabilities: CAPS, tools: [], cwd: projectRoot, memory, inPlanMode: true })
+
+    expect(off).not.toContain('## plan mode')
+    expect(on).toContain('## plan mode')
+    // the prefix before the plan-mode addendum is the static portion; it
+    // must match between the two calls byte-for-byte
+    const planIdx = on.indexOf('## plan mode')
+    const onStaticPart = on.slice(0, planIdx).trimEnd()
+    expect(off.trimEnd()).toBe(onStaticPart)
   })
 })

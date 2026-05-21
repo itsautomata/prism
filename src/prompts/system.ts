@@ -1,7 +1,8 @@
 /**
- * system prompt builder.
- * adapts per model capability and task type.
- * ~350 tokens core + dynamic sections.
+ * system prompt builder. static prefix (core, tools, env, agents, scan,
+ * lenses, memory, rules) is cached per ref-stable input tuple; dynamic
+ * suffix (active skills, repo map, plan mode) recomposed each call.
+ * static-first layout maximizes provider prefix-cache hits.
  */
 
 import type { ModelCapabilities, ToolSchema } from '../types/index.js'
@@ -39,8 +40,53 @@ interface PromptOptions {
   repoMap?: string
 }
 
+// stable identity for object refs. each unique ref gets a monotonic id; the
+// cache key is a concatenation of ids. callers passing the same ref hit the
+// cache; React-state updates that produce a new ref miss it and recompose.
+const refIds = new WeakMap<object, number>()
+let nextRefId = 0
+function refId(obj: object | undefined): number {
+  if (!obj) return -1
+  let id = refIds.get(obj)
+  if (id === undefined) {
+    id = ++nextRefId
+    refIds.set(obj, id)
+  }
+  return id
+}
+
+let cachedStaticKey: string | null = null
+let cachedStaticPrefix: string | null = null
+
+/** reset the static-prefix cache. exported for tests. */
+export function __resetStaticPromptCache(): void {
+  cachedStaticKey = null
+  cachedStaticPrefix = null
+}
+
+function staticKey(options: PromptOptions): string {
+  return [
+    options.capabilities.maxTools,
+    options.cwd,
+    refId(options.tools),
+    refId(options.projectContext),
+    refId(options.memory),
+    refId(options.profile),
+  ].join('|')
+}
+
 export function buildSystemPrompt(options: PromptOptions): string {
-  const { capabilities, tools, cwd, profile, projectContext, memory, inPlanMode, activeSkills, repoMap } = options
+  const key = staticKey(options)
+  if (key !== cachedStaticKey) {
+    cachedStaticPrefix = composeStatic(options)
+    cachedStaticKey = key
+  }
+  const dynamic = composeDynamic(options)
+  return dynamic ? `${cachedStaticPrefix}\n\n${dynamic}` : cachedStaticPrefix!
+}
+
+function composeStatic(options: PromptOptions): string {
+  const { capabilities, tools, cwd, profile, projectContext, memory } = options
 
   const sections = [
     getCore(),
@@ -54,21 +100,12 @@ export function buildSystemPrompt(options: PromptOptions): string {
   const invokeSkillsBlock = getInvokeSkills(cwd)
   if (invokeSkillsBlock) sections.push(invokeSkillsBlock)
 
-  const skillsBlock = getActiveSkills(cwd, activeSkills)
-  if (skillsBlock) sections.push(skillsBlock)
-
   if (projectContext) {
     sections.push(formatContext(projectContext))
     if (projectContext.git) {
       sections.push(getGitGuidance())
     }
   }
-
-  // tier-A repo-map: structural floor of the codebase. lands after the scan
-  // (which describes the project at the file-tree level) and before lenses
-  // (operator intent). empty string = no repo-map computed yet or no symbols
-  // extractable; either way, skip the section.
-  if (repoMap && repoMap.length > 0) sections.push(repoMap)
 
   const lensesBlock = getLenses(cwd)
   if (lensesBlock) sections.push(lensesBlock)
@@ -83,8 +120,23 @@ export function buildSystemPrompt(options: PromptOptions): string {
     if (learned) sections.push(learned)
   }
 
+  return sections.join('\n\n')
+}
+
+function composeDynamic(options: PromptOptions): string {
+  const { cwd, activeSkills, repoMap, inPlanMode } = options
+  const sections: string[] = []
+
+  const skillsBlock = getActiveSkills(cwd, activeSkills)
+  if (skillsBlock) sections.push(skillsBlock)
+
+  // repo-map: structural floor of the codebase. lives in the dynamic slab
+  // because the async extractor lands AFTER the first turn or two; we
+  // don't want that one-time invalidation to recompose the entire static
+  // prefix when only this section appears.
+  if (repoMap && repoMap.length > 0) sections.push(repoMap)
+
   // plan mode addendum goes LAST so it overrides any conflicting instruction.
-  // user enters plan mode via /plan, exits via /proceed.
   if (inPlanMode) {
     sections.push(getPlanModeAddendum())
   }
@@ -234,8 +286,15 @@ function getInvokeSkills(cwd: string): string | null {
 function getActiveSkills(cwd: string, names?: ReadonlySet<string>): string | null {
   if (!names || names.size === 0) return null
 
+  // sort by name so the rendered block is byte-stable regardless of insertion
+  // order. JS Set iterates in insertion order, which means toggling skill A
+  // then B yields a different prompt than toggling B then A — even though the
+  // active set is identical. that nondeterminism breaks provider-side prefix
+  // caching for no good reason.
+  const sortedNames = [...names].sort()
+
   const bodies: string[] = []
-  for (const name of names) {
+  for (const name of sortedNames) {
     try {
       const skill = loadSkill(name, cwd)
       bodies.push(skill.body)
