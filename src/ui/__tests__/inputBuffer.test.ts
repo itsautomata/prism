@@ -12,6 +12,12 @@ import {
   wordBoundaryRight,
   deleteWordBack,
   killToEnd,
+  totalLines,
+  flatToLineCol,
+  lineColToFlat,
+  moveCursorUp,
+  moveCursorDown,
+  sliceToLines,
   type Buffer,
 } from '../inputBuffer.js'
 
@@ -307,5 +313,114 @@ describe('normalization invariants', () => {
     const buf: Buffer = [{ kind: 'text', chars: 'x' }]
     const after = deleteBack(buf, 1)
     expect(after.buf).toEqual([])
+  })
+})
+
+describe('totalLines', () => {
+  it('is 1 for an empty or single-line buffer', () => {
+    expect(totalLines([])).toBe(1)
+    expect(totalLines([{ kind: 'text', chars: 'hello' }])).toBe(1)
+  })
+  it('counts every \\n as a line break', () => {
+    expect(totalLines([{ kind: 'text', chars: 'a\nb\nc' }])).toBe(3)
+    expect(totalLines([
+      { kind: 'text', chars: 'a\n' },
+      { kind: 'pill', id: 'p1', size: 5 },
+      { kind: 'text', chars: '\nb' },
+    ])).toBe(3)
+  })
+})
+
+describe('flatToLineCol / lineColToFlat', () => {
+  it('round-trips on simple single-line text', () => {
+    const buf: Buffer = [{ kind: 'text', chars: 'hello' }]
+    expect(flatToLineCol(buf, 0)).toEqual({ line: 0, col: 0 })
+    expect(flatToLineCol(buf, 5)).toEqual({ line: 0, col: 5 })
+    expect(lineColToFlat(buf, 0, 3)).toBe(3)
+  })
+  it('tracks line breaks correctly', () => {
+    const buf: Buffer = [{ kind: 'text', chars: 'ab\ncd\nef' }]
+    expect(flatToLineCol(buf, 0)).toEqual({ line: 0, col: 0 })
+    expect(flatToLineCol(buf, 2)).toEqual({ line: 0, col: 2 })  // just before \n
+    expect(flatToLineCol(buf, 3)).toEqual({ line: 1, col: 0 })  // after \n
+    expect(flatToLineCol(buf, 5)).toEqual({ line: 1, col: 2 })
+    expect(flatToLineCol(buf, 6)).toEqual({ line: 2, col: 0 })
+  })
+  it('treats pills as atoms with column = 1', () => {
+    const buf: Buffer = [
+      { kind: 'text', chars: 'a' },
+      { kind: 'pill', id: 'p1', size: 99 },
+      { kind: 'text', chars: 'b' },
+    ]
+    expect(flatToLineCol(buf, 0)).toEqual({ line: 0, col: 0 })
+    expect(flatToLineCol(buf, 1)).toEqual({ line: 0, col: 1 })  // pill atom
+    expect(flatToLineCol(buf, 2)).toEqual({ line: 0, col: 2 })  // after pill
+  })
+  it('lineColToFlat returns end-of-line when target col overruns', () => {
+    const buf: Buffer = [{ kind: 'text', chars: 'short\nlongerline' }]
+    // line 0 ("short") is 5 chars. ask for col 20 → returns end of line 0 (before \n)
+    expect(lineColToFlat(buf, 0, 20)).toBe(5)
+  })
+})
+
+describe('moveCursorUp / moveCursorDown', () => {
+  it('preserves column when moving up between same-width lines', () => {
+    const buf: Buffer = [{ kind: 'text', chars: 'hello\nworld' }]
+    // cursor at pos 9 → line 1, col 3 ("wor|ld"). up → line 0, col 3 ("hel|lo")
+    expect(moveCursorUp(buf, 9)).toBe(3)
+  })
+  it('clamps to end-of-target when moving up to a shorter line', () => {
+    const buf: Buffer = [{ kind: 'text', chars: 'hi\nworld' }]
+    // pos 7 (col 4 of "world") → up to "hi" lands at end of "hi" (pos 2)
+    expect(moveCursorUp(buf, 7)).toBe(2)
+  })
+  it('is a no-op when already on line 0', () => {
+    const buf: Buffer = [{ kind: 'text', chars: 'just one line' }]
+    expect(moveCursorUp(buf, 5)).toBe(5)
+  })
+  it('moves down symmetrically', () => {
+    const buf: Buffer = [{ kind: 'text', chars: 'hello\nworld' }]
+    // pos 3 → line 0, col 3. down → line 1, col 3
+    expect(moveCursorDown(buf, 3)).toBe(9)
+  })
+  it('is a no-op when already on the last line', () => {
+    const buf: Buffer = [{ kind: 'text', chars: 'hello\nworld' }]
+    // pos 9 is on line 1 (the last line); down is no-op
+    expect(moveCursorDown(buf, 9)).toBe(9)
+  })
+})
+
+describe('sliceToLines', () => {
+  it('returns the buffer unchanged when the range covers everything', () => {
+    const buf: Buffer = [{ kind: 'text', chars: 'a\nb\nc' }]
+    const sliced = sliceToLines(buf, 0, 3, 4)
+    expect(sliced.buf).toEqual([{ kind: 'text', chars: 'a\nb\nc' }])
+    expect(sliced.cursor).toBe(4)
+  })
+  it('clips lines above the start', () => {
+    const buf: Buffer = [{ kind: 'text', chars: 'first\nsecond\nthird' }]
+    // cursor at pos 14 ('t|hird' = col 1 of line 2). slice lines 2-3.
+    const sliced = sliceToLines(buf, 2, 3, 14)
+    expect(sliced.buf).toEqual([{ kind: 'text', chars: 'third' }])
+    // cursor moved from 14 → 14 - 13 dropped atoms = 1
+    expect(sliced.cursor).toBe(1)
+  })
+  it('clips lines below the end', () => {
+    const buf: Buffer = [{ kind: 'text', chars: 'one\ntwo\nthree' }]
+    const sliced = sliceToLines(buf, 0, 1, 2)
+    // line 0 is "one"; the \n at pos 3 advances line counter but is itself
+    // dropped from the chunk by the end-of-range break, so result is "one".
+    expect(sliced.buf).toEqual([{ kind: 'text', chars: 'one' }])
+    expect(sliced.cursor).toBe(2)
+  })
+  it('preserves pills that fall in the visible range', () => {
+    const buf: Buffer = [
+      { kind: 'text', chars: 'top\n' },
+      { kind: 'pill', id: 'p1', size: 99 },
+      { kind: 'text', chars: '\nbottom' },
+    ]
+    // total 3 lines. slice middle line only.
+    const sliced = sliceToLines(buf, 1, 2, 0)
+    expect(sliced.buf).toContainEqual({ kind: 'pill', id: 'p1', size: 99 })
   })
 })

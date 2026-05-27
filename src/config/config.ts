@@ -87,6 +87,13 @@ export interface TuningConfig {
    * more patience with flaky models. lower = faster failure on stuck loops.
    */
   empty_turn_nudge_cap: number
+
+  /**
+   * max visible lines in the input box. when the user types past this, the
+   * box stops growing and the viewport scrolls to keep the cursor visible.
+   * indicators above and below show the count of hidden lines.
+   */
+  input_viewport_max_lines: number
 }
 
 export interface PrismConfig {
@@ -109,6 +116,7 @@ const TUNING_DEFAULTS: TuningConfig = {
   bash_max_output_bytes: 512 * 1024,
   compaction_threshold: 0.8,
   empty_turn_nudge_cap: 2,
+  input_viewport_max_lines: 10,
 }
 
 const DEFAULTS: PrismConfig = {
@@ -227,6 +235,13 @@ compaction_threshold = 0.8
 # giving up. higher = more patience with flaky models. lower = faster
 # failure on stuck loops.
 empty_turn_nudge_cap = 2
+
+# ── input UX ────────────────────────────────────────────────────────────
+
+# max visible lines in the input box. typing past this freezes the box
+# height and scrolls the viewport to keep the cursor visible. above and
+# below the box, dim indicators show how many lines are hidden.
+input_viewport_max_lines = 10
 `
 
 /**

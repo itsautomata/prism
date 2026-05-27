@@ -365,3 +365,128 @@ export function killToEnd(buf: Buffer, pos: number): Buffer {
 export function clearBuffer(): Buffer {
   return []
 }
+
+/** total logical lines (count of \n + 1; minimum 1). */
+export function totalLines(buf: Buffer): number {
+  let n = 1
+  for (const seg of buf) {
+    if (seg.kind === 'text') {
+      for (let i = 0; i < seg.chars.length; i++) {
+        if (seg.chars[i] === '\n') n++
+      }
+    }
+  }
+  return n
+}
+
+/** map a flat cursor position to (line, column). pills count as one atom on
+ *  their line. \n advances line and resets col to 0. */
+export function flatToLineCol(buf: Buffer, pos: number): { line: number; col: number } {
+  let line = 0
+  let col = 0
+  let consumed = 0
+  for (const seg of buf) {
+    if (consumed >= pos) return { line, col }
+    if (seg.kind === 'text') {
+      for (let i = 0; i < seg.chars.length; i++) {
+        if (consumed >= pos) return { line, col }
+        if (seg.chars[i] === '\n') { line++; col = 0 } else { col++ }
+        consumed++
+      }
+    } else {
+      if (consumed >= pos) return { line, col }
+      col++
+      consumed++
+    }
+  }
+  return { line, col }
+}
+
+/** inverse of flatToLineCol. if the target line is shorter than targetCol,
+ *  returns the end of that line. */
+export function lineColToFlat(buf: Buffer, targetLine: number, targetCol: number): number {
+  let line = 0
+  let col = 0
+  let pos = 0
+  for (const seg of buf) {
+    if (seg.kind === 'text') {
+      for (let i = 0; i < seg.chars.length; i++) {
+        const ch = seg.chars[i]
+        if (line === targetLine && col >= targetCol) return pos
+        if (line === targetLine && ch === '\n') return pos
+        if (line > targetLine) return pos
+        if (ch === '\n') { line++; col = 0 } else { col++ }
+        pos++
+      }
+    } else {
+      if (line === targetLine && col >= targetCol) return pos
+      if (line > targetLine) return pos
+      col++
+      pos++
+    }
+  }
+  return pos
+}
+
+/** one line up, preserving column. no-op on line 0. */
+export function moveCursorUp(buf: Buffer, pos: number): number {
+  const { line, col } = flatToLineCol(buf, pos)
+  if (line === 0) return pos
+  return lineColToFlat(buf, line - 1, col)
+}
+
+/** one line down, preserving column. no-op on the last line. */
+export function moveCursorDown(buf: Buffer, pos: number): number {
+  const { line, col } = flatToLineCol(buf, pos)
+  if (line >= totalLines(buf) - 1) return pos
+  return lineColToFlat(buf, line + 1, col)
+}
+
+/** slice the buffer to a line range [startLine, endLine). returns the
+ *  sub-buffer plus the cursor position adjusted into its atom space. used by
+ *  the input renderer to render a viewport over a tall multi-line buffer. */
+export function sliceToLines(
+  buf: Buffer,
+  startLine: number,
+  endLine: number,
+  cursor: number,
+): { buf: Buffer; cursor: number } {
+  const result: Segment[] = []
+  let line = 0
+  let consumed = 0
+  let cursorDropped = 0
+
+  for (const seg of buf) {
+    if (line >= endLine) break
+    if (seg.kind === 'text') {
+      let chunk = ''
+      for (let i = 0; i < seg.chars.length; i++) {
+        const ch = seg.chars[i]!
+        if (line < startLine) {
+          if (consumed < cursor) cursorDropped++
+        } else if (line < endLine) {
+          chunk += ch
+        }
+        consumed++
+        if (ch === '\n') line++
+        if (line >= endLine) break
+      }
+      // drop a trailing \n: it counted toward advancing past the viewport's
+      // last line; rendering it would add an extra blank line at the bottom.
+      if (chunk.endsWith('\n')) chunk = chunk.slice(0, -1)
+      if (chunk) result.push({ kind: 'text', chars: chunk })
+    } else {
+      if (line < startLine) {
+        if (consumed < cursor) cursorDropped++
+      } else if (line < endLine) {
+        result.push(seg)
+      }
+      consumed++
+    }
+  }
+
+  let cursorOut = Math.max(0, cursor - cursorDropped)
+  const newLen = result.reduce((n, s) => n + (s.kind === 'text' ? s.chars.length : 1), 0)
+  if (cursorOut > newLen) cursorOut = newLen
+  return { buf: result, cursor: cursorOut }
+}

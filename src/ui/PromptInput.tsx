@@ -17,10 +17,16 @@ import {
   locate,
   wordBoundaryLeft,
   wordBoundaryRight,
+  moveCursorUp,
+  moveCursorDown,
+  totalLines,
+  flatToLineCol,
+  sliceToLines,
   type Buffer as InputBuffer,
   type PasteStore,
   type Segment,
 } from './inputBuffer.js'
+import { loadConfig } from '../config/config.js'
 
 interface PromptInputProps {
   onSubmit: (text: string) => void
@@ -370,8 +376,23 @@ export const PromptInput = memo(function PromptInput({ onSubmit, isLoading, inPl
       return
     }
 
+    // vertical cursor movement: up/down move the cursor between buffer lines
+    // when no slash-hint dropdown is showing. hint-nav is handled in the
+    // matches.length > 0 branch above; the two paths are mutually exclusive
+    // because hints only ever fire on a single-line buffer starting with `/`.
+    if (key.upArrow) {
+      cursorRef.current = moveCursorUp(bufferRef.current, cursorRef.current)
+      scheduleDisplayUpdate()
+      return
+    }
+    if (key.downArrow) {
+      cursorRef.current = moveCursorDown(bufferRef.current, cursorRef.current)
+      scheduleDisplayUpdate()
+      return
+    }
+
     // ignore other control sequences
-    if (key.ctrl || key.meta || key.upArrow || key.downArrow || key.tab) {
+    if (key.ctrl || key.meta || key.tab) {
       return
     }
 
@@ -419,12 +440,35 @@ export const PromptInput = memo(function PromptInput({ onSubmit, isLoading, inPl
         ...displayBuf.slice(1),
       ]
     : displayBuf
-  const visibleCursor = isShell ? Math.max(0, cursorPos - 1) : cursorPos
-  const totalVisible = visibleSegs.reduce(
+  const initialVisibleCursor = isShell ? Math.max(0, cursorPos - 1) : cursorPos
+
+  // viewport: when the buffer exceeds the configured max lines, render a
+  // window around the cursor instead of the whole buffer. above and below
+  // the window, dim indicators show how many lines are hidden.
+  const maxLines = loadConfig().tuning.input_viewport_max_lines
+  const total = totalLines(visibleSegs)
+  let renderSegs = visibleSegs
+  let renderCursor = initialVisibleCursor
+  let hiddenAbove = 0
+  let hiddenBelow = 0
+  if (total > maxLines) {
+    const { line: curLine } = flatToLineCol(visibleSegs, initialVisibleCursor)
+    // center the cursor in the viewport, clamped to buffer edges
+    const start = Math.max(0, Math.min(total - maxLines, curLine - Math.floor(maxLines / 2)))
+    const end = start + maxLines
+    const sliced = sliceToLines(visibleSegs, start, end, initialVisibleCursor)
+    renderSegs = sliced.buf
+    renderCursor = sliced.cursor
+    hiddenAbove = start
+    hiddenBelow = total - end
+  }
+
+  const renderAtomLen = renderSegs.reduce(
     (acc, s) => acc + (s.kind === 'text' ? s.chars.length : 1),
     0,
   )
-  const cursorOnEnd = visibleCursor >= totalVisible
+  const cursorOnEnd = renderCursor >= renderAtomLen
+  const bufferEmpty = visibleSegs.length === 0
 
   return (
     <Box marginTop={1} flexDirection="column">
@@ -433,6 +477,9 @@ export const PromptInput = memo(function PromptInput({ onSubmit, isLoading, inPl
       )}
       {isPlanInput && (
         <Text color={theme.planMode}>  plan mode <Text color={theme.textMuted}>(type /exec-plan to execute, /cancel-plan to abandon, or push back to revise)</Text></Text>
+      )}
+      {hiddenAbove > 0 && (
+        <Text color={theme.textMuted}>  ↑ {hiddenAbove} more line{hiddenAbove === 1 ? '' : 's'} above</Text>
       )}
       <Box borderStyle="round" borderColor={accent} paddingX={1}>
         {/* the prompt char, buffer, and cursor live inside one wrappable Text
@@ -443,11 +490,14 @@ export const PromptInput = memo(function PromptInput({ onSubmit, isLoading, inPl
             multi-line input render correctly inside the bordered box. */}
         <Text wrap="wrap" color={isShell ? theme.warning : undefined}>
           <Text color={accent}>{promptChar} </Text>
-          {renderSegments(visibleSegs, visibleCursor)}
+          {renderSegments(renderSegs, renderCursor)}
           {cursorOnEnd && <Text inverse> </Text>}
-          {totalVisible === 0 && <Text color={theme.textMuted}>ask anything...   <Text dimColor>(shift+enter for newline)</Text></Text>}
+          {bufferEmpty && <Text color={theme.textMuted}>ask anything...   <Text dimColor>(shift+enter for newline)</Text></Text>}
         </Text>
       </Box>
+      {hiddenBelow > 0 && (
+        <Text color={theme.textMuted}>  ↓ {hiddenBelow} more line{hiddenBelow === 1 ? '' : 's'} below</Text>
+      )}
       <SlashHints matches={matches} selectedIdx={selectedHintIdx} />
     </Box>
   )

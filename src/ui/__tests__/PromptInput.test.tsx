@@ -360,4 +360,46 @@ describe('PromptInput: multi-line input', () => {
     await tick()
     expect(onSubmit).toHaveBeenCalledWith('replacement')
   })
+
+  it('up arrow on a multi-line buffer moves cursor up a line, preserving column', async () => {
+    const { stdin } = render(<PromptInput onSubmit={onSubmit} isLoading={false} />)
+    // type two lines: "abc" then alt+enter then "xyz"
+    stdin.write('abc')
+    await tick()
+    stdin.write('\x1b\r')  // alt+enter newline
+    await tick()
+    stdin.write('xyz')
+    await tick()
+    // cursor is now at end of "xyz" (col 3 of line 1). up should move to col 3 of line 0 (after 'c').
+    stdin.write('\x1b[A')  // up arrow
+    await tick()
+    // type 'X' at the cursor position. should land after 'abc' → buffer becomes "abcX\nxyz"
+    stdin.write('X')
+    await tick()
+    stdin.write('\r')  // submit
+    await tick()
+    expect(onSubmit).toHaveBeenCalledWith('abcX\nxyz')
+  })
+
+  it('down arrow on a multi-line buffer moves cursor down a line', async () => {
+    const { stdin } = render(<PromptInput onSubmit={onSubmit} isLoading={false} />)
+    stdin.write('abc')
+    await tick()
+    stdin.write('\x1b\r')
+    await tick()
+    stdin.write('xyz')
+    await tick()
+    // move to start, then up to line 0
+    stdin.write('\x01')   // ctrl+a → start
+    await tick()
+    // cursor now at pos 0 (line 0, col 0). down → pos = start of line 1.
+    stdin.write('\x1b[B')  // down arrow
+    await tick()
+    stdin.write('Y')
+    await tick()
+    stdin.write('\r')
+    await tick()
+    // 'Y' lands at start of line 1, so buffer is "abc\nYxyz"
+    expect(onSubmit).toHaveBeenCalledWith('abc\nYxyz')
+  })
 })
