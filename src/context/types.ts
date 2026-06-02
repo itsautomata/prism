@@ -10,6 +10,7 @@ export interface ProjectContext {
   deps: DepsInfo
   prism: PrismState
   runtime: RuntimeInfo
+  testing: TestingInfo
 }
 
 export interface ProjectInfo {
@@ -50,4 +51,19 @@ export interface RuntimeInfo {
   node: string | null
   python: string | null
   docker: boolean
+}
+
+/**
+ * test-suite signal for the agent. populated by the scanner so the
+ * Verify tool's caller (the model) can derive the right command without
+ * guessing. `hasTests` is true when the walk found at least one test file.
+ * `command` is the literal verbatim text from package.json scripts.test
+ * (or null when not present); the model can use it, ignore it, or refine
+ * it (e.g. `npx vitest run` instead of the unqualified `vitest`).
+ */
+export interface TestingInfo {
+  hasTests: boolean
+  testFileCount: number
+  framework: string | null   // 'vitest' | 'pytest' | 'cargo-test' | 'go-test' | etc.
+  command: string | null     // verbatim from package.json scripts.test, if present
 }

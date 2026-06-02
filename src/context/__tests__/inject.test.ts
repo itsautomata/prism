@@ -10,6 +10,7 @@ function makeContext(overrides: Partial<ProjectContext> = {}): ProjectContext {
     deps: { file: 'package.json', count: 5, names: [] },
     prism: { learnedRules: 0 },
     runtime: { shell: 'zsh', node: '20.0.0', python: null, docker: false },
+    testing: { hasTests: false, testFileCount: 0, framework: null, command: null },
     ...overrides,
   }
 }

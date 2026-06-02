@@ -14,6 +14,7 @@ import type {
   DepsInfo,
   PrismState,
   RuntimeInfo,
+  TestingInfo,
 } from './types.js'
 
 const LANG_MAP: Record<string, string> = {
@@ -178,6 +179,7 @@ export function scanProject(cwd: string): ProjectContext {
     deps,
     prism: detectPrismState(cwd),
     runtime: detectRuntime(),
+    testing: detectTesting(cwd, structure, deps),
   }
 }
 function detectLanguage(filesByType: Record<string, number>): string | null {
@@ -414,4 +416,89 @@ function tryVersion(cmd: string): string | null {
   } catch {
     return null
   }
+}
+
+/**
+ * detect the project's test-suite signal so the agent can call Verify with
+ * the right command. signals:
+ *   - hasTests: a file in the walk matches a common test pattern
+ *   - framework: derived from deps (vitest, pytest, etc.) or config files
+ *     (Cargo.toml → cargo-test, go.mod → go-test)
+ *   - command: the verbatim `scripts.test` value from package.json when
+ *     present; null otherwise (the agent reconstructs it from framework)
+ */
+function detectTesting(cwd: string, structure: StructureInfo, deps: DepsInfo): TestingInfo {
+  const configs = new Set(structure.configFiles)
+  const depNames = new Set(deps.names)
+
+  // walk-based test file count: any directory named 'tests' or 'test', plus
+  // common filename suffixes. cheap heuristic; the agent already has the
+  // repo-map for ground truth.
+  const testFileCount = countTestFiles(cwd)
+
+  let framework: string | null = null
+  if (depNames.has('vitest')) framework = 'vitest'
+  else if (depNames.has('jest')) framework = 'jest'
+  else if (depNames.has('mocha')) framework = 'mocha'
+  else if (depNames.has('@playwright/test') || depNames.has('playwright')) framework = 'playwright'
+  else if (depNames.has('pytest')) framework = 'pytest'
+  else if (configs.has('pyproject.toml') || configs.has('setup.py')) framework = 'pytest'
+  else if (configs.has('Cargo.toml')) framework = 'cargo-test'
+  else if (configs.has('go.mod')) framework = 'go-test'
+
+  let command: string | null = null
+  const pkgJsonPath = join(cwd, 'package.json')
+  if (existsSync(pkgJsonPath)) {
+    try {
+      const pkg = JSON.parse(readFileSync(pkgJsonPath, 'utf-8'))
+      if (pkg.scripts && typeof pkg.scripts.test === 'string') {
+        command = pkg.scripts.test
+      }
+    } catch {
+    }
+  }
+
+  return { hasTests: testFileCount > 0, testFileCount, framework, command }
+}
+
+function countTestFiles(cwd: string): number {
+  // bounded walk: only the standard test-dir patterns + filename patterns.
+  // avoid descending into node_modules, .git, dist, build, etc. — the
+  // scanner walks once already; counting test files reuses that effort
+  // where possible, but the structural info doesn't preserve full paths.
+  // simplest correct approach: a targeted walk capped at 1500 entries.
+  const TEST_NAME = /(?:^|[._-])(?:test|spec)(?:[._-]|$)/i
+  const TEST_DIRS = new Set(['tests', 'test', '__tests__'])
+  const SKIP = new Set([
+    'node_modules', '.git', '.venv', 'venv', 'env', '__pycache__',
+    'dist', 'build', 'out', 'target', '_build',
+    '.next', '.nuxt', '.cache', 'coverage', '.nyc_output',
+  ])
+
+  let count = 0
+  const stack: string[] = [cwd]
+  let budget = 1500
+  while (stack.length > 0 && budget-- > 0) {
+    const dir = stack.pop()!
+    let entries: string[]
+    try { entries = readdirSync(dir) } catch { continue }
+    for (const name of entries) {
+      if (SKIP.has(name) || name.startsWith('.')) continue
+      const full = join(dir, name)
+      let s
+      try { s = statSync(full) } catch { continue }
+      if (s.isDirectory()) {
+        stack.push(full)
+        continue
+      }
+      if (TEST_NAME.test(name)) {
+        count++
+        continue
+      }
+      // also count files that live inside a test directory regardless of name
+      const parent = basename(dir)
+      if (TEST_DIRS.has(parent)) count++
+    }
+  }
+  return count
 }

@@ -57,6 +57,16 @@ export function formatContext(ctx: ProjectContext): string {
     lines.push(`deps: ${ctx.deps.count} (${ctx.deps.file})`)
   }
 
+  // testing signal: surfaced verbatim so the agent can derive the right
+  // Verify command without guessing. when no tests exist, this is silent.
+  const { testing } = ctx
+  if (testing.hasTests) {
+    const parts: string[] = [`tests: ${testing.testFileCount}`]
+    if (testing.framework) parts.push(`framework: ${testing.framework}`)
+    if (testing.command) parts.push(`scripts.test: ${testing.command}`)
+    lines.push(parts.join(' · '))
+  }
+
   // prism state
   if (ctx.prism.learnedRules > 0) {
     lines.push(`learned rules: ${ctx.prism.learnedRules}`)
