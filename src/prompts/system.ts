@@ -105,6 +105,7 @@ function composeStatic(options: PromptOptions): string {
     if (projectContext.git) {
       sections.push(getGitGuidance())
     }
+    sections.push(getVerificationGuidance(projectContext.testing.hasTests))
   }
 
   const lensesBlock = getLenses(cwd)
@@ -342,6 +343,18 @@ function getGitGuidance(): string {
 - For live info (diffs, blame, log), use Bash with git commands.
 - Before committing, always show the user what will be committed.
 - Never force-push or reset --hard without explicit permission.`
+}
+
+function getVerificationGuidance(hasTests: boolean): string {
+  if (!hasTests) {
+    return `# verification
+- This project has no test suite. After a non-trivial edit, confirm the change and stop. Do not propose writing tests unless the user explicitly asks.
+- Typo and comment-only edits: call out that the change is trivial.`
+  }
+  return `# verification
+- After a non-trivial edit, call Verify with the project's test command. Derive it from \`# project scan\` (framework, scripts.test) and \`# repo map\` (test file structure).
+- Skip Verify for typo or comment-only edits; call out that the change is trivial.
+- If Verify fails, debug from its output. Do not claim done until it passes (or the user accepts the failing state explicitly).`
 }
 
 function getPlanModeAddendum(): string {

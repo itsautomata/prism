@@ -17,7 +17,7 @@ import { render } from 'ink'
 import { App } from './ui/App.js'
 import { OllamaProvider } from './providers/ollama.js'
 import { OpenRouterProvider } from './providers/openrouter.js'
-import { BashTool, ReadTool, EditTool, WriteTool, GlobTool, GrepTool, WebFetchTool, WebSearchTool } from './tools/index.js'
+import { BashTool, ReadTool, EditTool, WriteTool, GlobTool, GrepTool, WebFetchTool, WebSearchTool, VerifyTool } from './tools/index.js'
 import { loadConfig, initConfig, migrateConfig, getConfigPath } from './config/config.js'
 import { createSession, findLastSession, listSessions, loadSession } from './sessions/store.js'
 import { allFlagTokens, complete, valueTakingFlagTokens } from './completion/spec.js'
@@ -322,7 +322,7 @@ async function main() {
   const capabilities = provider.getCapabilities()
   // base tool pool (no Agent). App.tsx constructs the Agent tool once mounted,
   // because its onProgress callback needs to reach the rendered UI's state.
-  const tools = [BashTool, ReadTool, EditTool, WriteTool, GlobTool, GrepTool, WebFetchTool, WebSearchTool]
+  const tools = [BashTool, ReadTool, EditTool, WriteTool, GlobTool, GrepTool, WebFetchTool, WebSearchTool, VerifyTool]
 
   // load project context (scan + memory) with visible progress.
   // each is independently opt-out via --no-scan and --no-memory.
