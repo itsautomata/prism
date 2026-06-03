@@ -5,9 +5,14 @@
  */
 
 import { z } from 'zod'
-import { execSync, execFileSync } from 'child_process'
+import { exec } from 'child_process'
+import { promisify } from 'util'
 import { buildTool, type ToolResult, type ToolContext, type PermissionResult } from './Tool.js'
 import { loadConfig } from '../config/config.js'
+
+// promisified exec keeps the node event loop free during the command
+// (execSync blocks the UI render loop, including the spinner animation).
+const execAsync = promisify(exec)
 
 // commands that are safe to run concurrently (read-only)
 const SAFE_COMMANDS = new Set([
@@ -55,17 +60,14 @@ export const BashTool = buildTool<BashInput>({
     const timeout = Math.min(input.timeout || 120_000, 600_000)
 
     try {
-      const output = execSync(input.command, {
+      const { stdout } = await execAsync(input.command, {
         cwd: context.cwd,
         timeout,
         maxBuffer: maxOutput,
-        encoding: 'utf-8',
-        stdio: ['pipe', 'pipe', 'pipe'],
         env: { ...process.env },
       })
 
-      const stderr = '' // execSync throws on non-zero, stderr captured in error
-      const result = output.trim()
+      const result = stdout.trim()
 
       if (result.length > maxOutput) {
         return {
@@ -76,7 +78,7 @@ export const BashTool = buildTool<BashInput>({
       return { content: result || '(no output)' }
     } catch (error: unknown) {
       const execError = error as {
-        status?: number
+        code?: number
         stdout?: string
         stderr?: string
         message?: string
@@ -84,7 +86,7 @@ export const BashTool = buildTool<BashInput>({
 
       const stdout = execError.stdout?.toString().trim() || ''
       const stderr = execError.stderr?.toString().trim() || ''
-      const exitCode = execError.status ?? 1
+      const exitCode = execError.code ?? 1
 
       let content = ''
       if (stdout) content += stdout + '\n'

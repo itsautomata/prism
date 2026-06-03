@@ -12,9 +12,14 @@
  */
 
 import { z } from 'zod'
-import { execSync } from 'child_process'
+import { exec } from 'child_process'
+import { promisify } from 'util'
 import { buildTool, type ToolResult, type ToolContext, type PermissionResult } from './Tool.js'
 import { loadConfig } from '../config/config.js'
+
+// promisified exec keeps the node event loop free during the command
+// (execSync blocks the UI render loop, including the spinner animation).
+const execAsync = promisify(exec)
 
 const inputSchema = z.object({
   command: z.string().describe('the verification command to run (e.g. `npx vitest run`, `pytest`, `cargo test`)'),
@@ -35,29 +40,27 @@ export const VerifyTool = buildTool<VerifyInput>({
     const timeout = Math.min(input.timeout || 60_000, 600_000)
 
     try {
-      const output = execSync(input.command, {
+      const { stdout } = await execAsync(input.command, {
         cwd: context.cwd,
         timeout,
         maxBuffer: maxOutput,
-        encoding: 'utf-8',
-        stdio: ['pipe', 'pipe', 'pipe'],
         env: { ...process.env },
       })
-      const result = output.trim()
+      const result = stdout.trim()
       if (result.length > maxOutput) {
         return { content: result.slice(0, maxOutput) + '\n\n[output truncated]' }
       }
       return { content: `verified: ${input.command}\n\n${result || '(no output)'}` }
     } catch (error: unknown) {
       const execError = error as {
-        status?: number
+        code?: number
         stdout?: string
         stderr?: string
         message?: string
       }
       const stdout = execError.stdout?.toString().trim() || ''
       const stderr = execError.stderr?.toString().trim() || ''
-      const exitCode = execError.status ?? 1
+      const exitCode = execError.code ?? 1
       const parts = [
         `verification failed: ${input.command}`,
         '',

@@ -5,7 +5,7 @@
  */
 
 import { z } from 'zod'
-import { readFileSync, writeFileSync } from 'fs'
+import { readFile, writeFile } from 'fs/promises'
 import { buildTool, type ToolResult, type ToolContext } from './Tool.js'
 import { resolve, isAbsolute } from 'path'
 
@@ -31,7 +31,7 @@ export const EditTool = buildTool<EditInput>({
 
     let content: string
     try {
-      content = readFileSync(filePath, 'utf-8')
+      content = await readFile(filePath, 'utf-8')
     } catch {
       return { content: `error: file not found: ${filePath}`, isError: true }
     }
@@ -63,7 +63,7 @@ export const EditTool = buildTool<EditInput>({
       : content.replace(input.old_string, input.new_string)
 
     try {
-      writeFileSync(filePath, updated, 'utf-8')
+      await writeFile(filePath, updated, 'utf-8')
       const replacements = input.replace_all
         ? content.split(input.old_string).length - 1
         : 1
