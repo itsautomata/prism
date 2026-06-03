@@ -38,10 +38,10 @@ describe('VerifyTool', () => {
   })
 
   it('declares itself read-only', () => {
-    expect(VerifyTool.isReadOnly({ command: 'pytest' }, ctx('/tmp'))).toBe(true)
+    expect(VerifyTool.isReadOnly({ command: 'pytest' })).toBe(true)
   })
 
   it('declares itself not concurrency-safe (build/test pipelines serialize)', () => {
-    expect(VerifyTool.isConcurrencySafe({ command: 'go test ./...' }, ctx('/tmp'))).toBe(false)
+    expect(VerifyTool.isConcurrencySafe({ command: 'go test ./...' })).toBe(false)
   })
 })
