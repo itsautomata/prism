@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { render } from 'ink-testing-library'
 import { PromptInput } from '../PromptInput.js'
+import { PHRASES } from '../spinnerPhrases.js'
 
 // the input throttles non-backspace keystrokes through a 16ms timer.
 // we wait a beat between writes to let the display refresh.
@@ -401,5 +402,84 @@ describe('PromptInput: multi-line input', () => {
     await tick()
     // 'Y' lands at start of line 1, so buffer is "abc\nYxyz"
     expect(onSubmit).toHaveBeenCalledWith('abc\nYxyz')
+  })
+})
+
+describe('PromptInput: thinking indicator', () => {
+  let onSubmit: (text: string) => void
+
+  beforeEach(() => {
+    onSubmit = vi.fn() as unknown as (text: string) => void
+  })
+
+  it('renders a thinking-pool phrase by default when isLoading and no overrides', async () => {
+    const { lastFrame } = render(<PromptInput onSubmit={onSubmit} isLoading={true} />)
+    await tick()
+    const frame = lastFrame() ?? ''
+    const matched = PHRASES.thinking!.some(p => frame.includes(`${p}...`))
+    expect(matched, `frame did not contain any thinking-pool phrase: ${frame}`).toBe(true)
+    expect(frame).toContain('esc to interrupt')
+  })
+
+  it('activity prop overrides phrase selection (raw label)', async () => {
+    const { lastFrame } = render(
+      <PromptInput onSubmit={onSubmit} isLoading={true} activity="running Read" />,
+    )
+    await tick()
+    expect(lastFrame()).toContain('running Read...')
+  })
+
+  it('phase=running + currentTool routes to the tool-specific pool', async () => {
+    const { lastFrame } = render(
+      <PromptInput onSubmit={onSubmit} isLoading={true} phase="running" currentTool="Read" />,
+    )
+    await tick()
+    const frame = lastFrame() ?? ''
+    const matched = PHRASES.Read!.some(p => frame.includes(`${p}...`))
+    expect(matched, `frame did not contain any Read-pool phrase: ${frame}`).toBe(true)
+  })
+
+  it('inPlanMode + thinking phase routes to the planMode pool', async () => {
+    const { lastFrame } = render(
+      <PromptInput onSubmit={onSubmit} isLoading={true} phase="thinking" inPlanMode={true} />,
+    )
+    await tick()
+    const frame = lastFrame() ?? ''
+    const matched = PHRASES.planMode!.some(p => frame.includes(`${p}...`))
+    expect(matched, `frame did not contain any planMode-pool phrase: ${frame}`).toBe(true)
+  })
+
+  it('phase=after-tool routes to the afterTool pool regardless of tool name', async () => {
+    const { lastFrame } = render(
+      <PromptInput onSubmit={onSubmit} isLoading={true} phase="after-tool" currentTool="Bash" />,
+    )
+    await tick()
+    const frame = lastFrame() ?? ''
+    const matched = PHRASES.afterTool!.some(p => frame.includes(`${p}...`))
+    expect(matched, `frame did not contain any afterTool-pool phrase: ${frame}`).toBe(true)
+  })
+
+  it('renders a braille spinner glyph (animated)', async () => {
+    const { lastFrame } = render(<PromptInput onSubmit={onSubmit} isLoading={true} />)
+    await tick()
+    const frame = lastFrame() ?? ''
+    // the spinner uses braille frames; at least one must be on screen
+    expect(frame).toMatch(/[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]/)
+  })
+
+  it('shows elapsed seconds once at least a second has passed', async () => {
+    const { lastFrame } = render(<PromptInput onSubmit={onSubmit} isLoading={true} />)
+    // wait ~1.1s for elapsedSec to roll over to 1
+    await tick(1100)
+    expect(lastFrame()).toMatch(/· \d+s/)
+  })
+
+  it('does NOT render the indicator when isLoading is false', async () => {
+    const { lastFrame } = render(
+      <PromptInput onSubmit={onSubmit} isLoading={false} activity="should not appear" />,
+    )
+    await tick()
+    expect(lastFrame()).not.toContain('should not appear')
+    expect(lastFrame()).not.toContain('esc to interrupt')
   })
 })

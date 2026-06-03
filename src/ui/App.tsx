@@ -3,6 +3,7 @@ import { Box, useApp, useInput } from 'ink'
 import { Banner } from './Banner.js'
 import { MessageList, type DisplayMessage } from './MessageList.js'
 import { PromptInput } from './PromptInput.js'
+import type { Phase as SpinnerPhase } from './spinnerPhrases.js'
 import { PermissionPrompt, type PermissionChoice } from './PermissionPrompt.js'
 import { StatusBar } from './StatusBar.js'
 import { query } from '../query/engine.js'
@@ -87,6 +88,8 @@ export function App({ provider: initProvider, model: initModel, tools: baseTools
   const [isLoading, setIsLoading] = useState(false)
   const [turnCount, setTurnCount] = useState(0)
   const [tokenInfo, setTokenInfo] = useState('')
+  const [spinnerPhase, setSpinnerPhase] = useState<SpinnerPhase>('thinking')
+  const [spinnerTool, setSpinnerTool] = useState<string | undefined>(undefined)
   const [profile, setProfile] = useState<ModelProfile>(() => loadProfile(model))
   const [pendingPermission, setPendingPermission] = useState<{
     toolName: string; description: string; id: string; resolve: (choice: PermissionChoice) => void
@@ -193,6 +196,8 @@ export function App({ provider: initProvider, model: initModel, tools: baseTools
   const runModelLoop = useCallback(async () => {
     setTurnCount(prev => prev + 1)
     setIsLoading(true)
+    setSpinnerPhase('thinking')
+    setSpinnerTool(undefined)
 
     const controller = new AbortController()
     setAbortController(controller)
@@ -222,9 +227,13 @@ export function App({ provider: initProvider, model: initModel, tools: baseTools
             })
             break
           case 'tool_start':
+            setSpinnerPhase('running')
+            setSpinnerTool(event.name)
             setDisplayMessages(prev => [...prev, { role: 'tool_call', text: '', toolName: event.name }])
             break
           case 'tool_end':
+            setSpinnerPhase('after-tool')
+            setSpinnerTool(event.name)
             setDisplayMessages(prev => [...prev, { role: 'tool_result', text: event.result, isError: event.isError }])
             currentText = ''
             break
@@ -334,7 +343,7 @@ export function App({ provider: initProvider, model: initModel, tools: baseTools
       </Box>
       <StatusBar turnCount={turnCount} tokenInfo={tokenInfo} />
       <PromptInput onSubmit={handleSubmit} isLoading={isLoading} inPlanMode={inPlanMode}
-        invokeSkills={invokeSkillSpecs} />
+        invokeSkills={invokeSkillSpecs} phase={spinnerPhase} currentTool={spinnerTool} />
     </Box>
   )
 }

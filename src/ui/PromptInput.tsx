@@ -27,13 +27,29 @@ import {
   type Segment,
 } from './inputBuffer.js'
 import { loadConfig } from '../config/config.js'
+import { pickPhrase, type Phase } from './spinnerPhrases.js'
 
 interface PromptInputProps {
   onSubmit: (text: string) => void
   isLoading: boolean
   inPlanMode?: boolean
   invokeSkills?: SlashCommandSpec[]
+  /** raw label override; bypasses the phrase pool. test-only path. */
+  activity?: string
+  /** agent phase. routes the phrase pool when activity is unset. */
+  phase?: Phase
+  /** tool name when phase is 'running' or 'after-tool'. */
+  currentTool?: string
 }
+
+// 80ms per frame reads as smooth animation.
+const SPINNER_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏']
+const SPINNER_INTERVAL_MS = 80
+// re-pick cadence when phase doesn't change. also lets the 'stuck' bucket
+// kick in past its threshold without a separate timer.
+const PHRASE_ROTATE_MS = 8000
+// no-repeat window. 3 = fresh feel without exhausting small pools (stuck).
+const PHRASE_RECENT_WINDOW = 3
 
 /**
  * input chunks above this length in a single useInput tick fold into a paste
@@ -41,7 +57,7 @@ interface PromptInputProps {
  */
 const PASTE_PILL_THRESHOLD = 1000
 
-export const PromptInput = memo(function PromptInput({ onSubmit, isLoading, inPlanMode, invokeSkills = [] }: PromptInputProps) {
+export const PromptInput = memo(function PromptInput({ onSubmit, isLoading, inPlanMode, invokeSkills = [], activity, phase = 'thinking', currentTool }: PromptInputProps) {
   // segment buffer: text runs interleaved with pasted-blob placeholders.
   const bufferRef = useRef<InputBuffer>(createBuffer())
   // pill content store: pill id → original pasted text. expand() resolves
@@ -54,6 +70,10 @@ export const PromptInput = memo(function PromptInput({ onSubmit, isLoading, inPl
   const [displayBuf, setDisplayBuf] = useState<InputBuffer>([])
   const [cursorPos, setCursorPos] = useState(0)
   const [selectedHintIdx, setSelectedHintIdx] = useState(0)
+  const [tick, setTick] = useState(0)
+  const [startedAt, setStartedAt] = useState<number | null>(null)
+  const [phrase, setPhrase] = useState('thinking')
+  const recentPhrasesRef = useRef<string[]>([])
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   // some terminals split modified-enter (shift / option / alt + enter) into
   // escape-then-return. defer escape's clear by 50ms so a return inside the
@@ -81,6 +101,48 @@ export const PromptInput = memo(function PromptInput({ onSubmit, isLoading, inPl
       if (escapeTimerRef.current) clearTimeout(escapeTimerRef.current)
     }
   }, [])
+
+  useEffect(() => {
+    if (!isLoading) {
+      setStartedAt(null)
+      return
+    }
+    setStartedAt(Date.now())
+    setTick(0)
+    const id = setInterval(() => setTick(t => t + 1), SPINNER_INTERVAL_MS)
+    return () => clearInterval(id)
+  }, [isLoading])
+
+  // startedAt via ref so the interval body sees the latest value without
+  // re-subscribing each tick.
+  const startedAtRef = useRef<number | null>(null)
+  useEffect(() => { startedAtRef.current = startedAt }, [startedAt])
+  useEffect(() => {
+    if (!isLoading) {
+      recentPhrasesRef.current = []
+      setPhrase('thinking')
+      return
+    }
+    const repick = () => {
+      const elapsed = startedAtRef.current
+        ? Math.floor((Date.now() - startedAtRef.current) / 1000)
+        : 0
+      const next = pickPhrase({
+        phase,
+        tool: currentTool,
+        inPlanMode: !!inPlanMode,
+        elapsedSec: elapsed,
+        recentPhrases: recentPhrasesRef.current,
+      })
+      const updated = [...recentPhrasesRef.current, next]
+      if (updated.length > PHRASE_RECENT_WINDOW) updated.shift()
+      recentPhrasesRef.current = updated
+      setPhrase(next)
+    }
+    repick()
+    const id = setInterval(repick, PHRASE_ROTATE_MS)
+    return () => clearInterval(id)
+  }, [isLoading, phase, currentTool, inPlanMode])
 
   // clear the buffer immediately. shared between the deferred-escape timer
   // and the pre-empt case where another key arrives while escape is pending.
@@ -412,11 +474,17 @@ export const PromptInput = memo(function PromptInput({ onSubmit, isLoading, inPl
   }, { isActive: !isLoading })
 
   if (isLoading) {
+    const frame = SPINNER_FRAMES[tick % SPINNER_FRAMES.length]
+    const label = activity ?? phrase
+    const elapsedSec = startedAt ? Math.floor((Date.now() - startedAt) / 1000) : 0
     return (
       <Box marginTop={1} flexDirection="column">
         <Box>
-          <Text color={theme.spinner}>◇ </Text>
-          <Text color={theme.textDim}>thinking...</Text>
+          <Text color={theme.spinner}>{frame} </Text>
+          <Text color={theme.textDim}>{label}...</Text>
+          {elapsedSec >= 1 && (
+            <Text color={theme.textMuted}> · {elapsedSec}s</Text>
+          )}
         </Box>
         <Box>
           <Text color={theme.textMuted}>  esc to interrupt</Text>
