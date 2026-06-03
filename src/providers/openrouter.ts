@@ -134,6 +134,37 @@ function extractCachedTokens(u: UpstreamUsage | undefined): number {
   )
 }
 
+/**
+ * format an openrouter error body into one readable line.
+ * known statuses get a tailored fix message; metadata.previous_errors dropped.
+ */
+export function formatOpenRouterError(status: number, rawBody: string): string {
+  let message = rawBody
+  try {
+    const parsed = JSON.parse(rawBody) as { error?: { message?: string } }
+    if (parsed.error?.message) message = parsed.error.message
+  } catch {
+    // raw body isn't JSON; use as-is
+  }
+
+  if (status === 402) {
+    const m = message.match(/requested up to (\d+) tokens, but can only afford (\d+)/)
+    if (m) {
+      return `openrouter: out of credits. requested ${m[1]} tokens, only ${m[2]} affordable.\n  fix: lower max_tokens in config, or add credits at https://openrouter.ai/settings/credits`
+    }
+    return 'openrouter: out of credits. add credits at https://openrouter.ai/settings/credits, or lower max_tokens'
+  }
+  if (status === 401) {
+    return 'openrouter: invalid api key. check OPENROUTER_API_KEY or ~/.prism/config.toml'
+  }
+  if (status === 429) {
+    return 'openrouter: rate limited. try again in a moment'
+  }
+
+  const clamped = message.length > 240 ? message.slice(0, 240) + '...' : message
+  return `openrouter ${status}: ${clamped}`
+}
+
 export class OpenRouterProvider implements ProviderBridge {
   name = 'openrouter'
   private apiKey = ''
@@ -190,7 +221,7 @@ export class OpenRouterProvider implements ProviderBridge {
 
     if (!res.ok) {
       const errorText = await res.text().catch(() => res.statusText)
-      yield { type: 'error', error: `openrouter error: ${res.status} ${errorText}` }
+      yield { type: 'error', error: formatOpenRouterError(res.status, errorText) }
       return
     }
 
@@ -310,7 +341,7 @@ export class OpenRouterProvider implements ProviderBridge {
 
     if (!res.ok) {
       const errorText = await res.text().catch(() => res.statusText)
-      throw new Error(`openrouter error: ${res.status} ${errorText}`)
+      throw new Error(formatOpenRouterError(res.status, errorText))
     }
 
     const data = await res.json() as {
