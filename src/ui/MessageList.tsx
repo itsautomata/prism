@@ -46,8 +46,8 @@ function MessageBlock({ message }: { message: DisplayMessage }) {
     case 'tool_call':
       return (
         <Box marginTop={0} marginBottom={0} marginLeft={2}>
-          <Text color={theme.accent}>⚡ </Text>
-          <Text color={theme.accent} bold>{message.toolName}</Text>
+          <Text color={theme.toolName}>⚡ </Text>
+          <Text color={theme.toolName} bold>{message.toolName?.toLowerCase()}</Text>
         </Box>
       )
 

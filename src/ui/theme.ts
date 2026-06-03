@@ -18,7 +18,7 @@ export const theme = {
   accent: '#00ddff',         // cyan for tool names
   warning: '#ffaa00',        // amber for shell mode and warnings
   planMode: '#a78bfa',       // soft violet for plan mode (cool, contemplative)
-  error: '#ff4444',          // red for errors
+  error: '#cf3d0c',          // burnt vermillion for errors
   success: '#00ff88',        // same as primary
 
   // UI elements
@@ -28,9 +28,9 @@ export const theme = {
   spinner: '#00ff88',        // loading spinner
 
   // tool results
-  toolName: '#00ddff',       // tool name highlight
+  toolName: '#c29734',       // muted gold for tool name highlight
   toolOutput: '#aaaaaa',     // tool output text
-  toolError: '#ff4444',      // tool error text
+  toolError: '#cf3d0c',      // tool error text
 
   // thinking
   thinking: '#666666',       // thinking text (dim)
