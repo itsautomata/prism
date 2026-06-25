@@ -7,7 +7,10 @@ Prism is an open source coding assistant that runs locally on your machine throu
 
 > actively built and tested. expect breaking changes. decentralized intelligence is cool.
 
-![prism](https://raw.githubusercontent.com/itsautomata/prism/main/assets/prism_3.png)
+**prism building a working terminal tetris from one prompt with deepseek-v4-pro**
+
+https://github.com/user-attachments/assets/3451a4ec-1a4f-431d-bd15-aba799b9cdf4
+
 
 ## quick start
 
