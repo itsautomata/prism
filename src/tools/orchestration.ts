@@ -161,6 +161,18 @@ async function executeToolCall(
   context: ToolContext,
   askPermission?: PermissionResolver,
 ): Promise<ToolCallResult> {
+  // refuse calls whose arguments arrived as malformed JSON. running with the
+  // silently-empty fallback input would take a wrong action with no signal.
+  if (block.invalidArgs) {
+    return {
+      toolUseId: block.id,
+      result: {
+        content: `malformed tool arguments for ${block.name} — not executed. resend the call with valid JSON arguments.`,
+        isError: true,
+      },
+    }
+  }
+
   // pre-validation: catch obviously wrong calls
   const badCallReason = isObviousBadToolCall(block)
   if (badCallReason) {
@@ -210,9 +222,19 @@ async function executeToolCall(
     }
   }
 
-  // ask user if needed
-  const isReadOnly = tool.isReadOnly(parsed.data)
-  if (askPermission && needsPermission(tool.name, permission, isReadOnly)) {
+  // ask user if needed. checkPermissions is the single source of truth.
+  if (needsPermission(tool.name, permission)) {
+    // fail closed: a gated action with no resolver must not execute silently
+    if (!askPermission) {
+      return {
+        toolUseId: block.id,
+        result: {
+          content: `permission required for ${tool.name} but no approval is available in this context`,
+          isError: true,
+        },
+      }
+    }
+
     const description = permission.behavior === 'ask' ? permission.message : `run ${tool.name}`
     const choice = await askPermission(tool.name, description, block.id)
 

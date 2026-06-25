@@ -43,23 +43,24 @@ export function clearSessionRules(): void {
 
 /**
  * determine if a tool needs permission.
- * read-only tools auto-allow. everything else checks rules then asks.
+ *
+ * the tool's checkPermissions result is the single source of truth: read-only
+ * tools return 'allow' (their auto-allow path), everything else returns 'ask'
+ * or 'deny'. a tool's isReadOnly flag is a concurrency/UI hint and deliberately
+ * does not gate here — letting it short-circuit let a command like
+ * `echo ok && rm -rf ~` (first token "safe") skip the prompt entirely.
  */
 export function needsPermission(
   toolName: string,
   permissionResult: PermissionResult,
-  isReadOnly: boolean,
 ): boolean {
-  // read-only tools never ask
-  if (isReadOnly) return false
-
   // already allowed for this session
   if (isSessionAllowed(toolName)) return false
 
   // tool says allow
   if (permissionResult.behavior === 'allow') return false
 
-  // tool says deny — don't ask, just block
+  // tool says deny — don't ask, just block (handled upstream)
   if (permissionResult.behavior === 'deny') return false
 
   // ask

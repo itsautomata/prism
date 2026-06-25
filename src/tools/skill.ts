@@ -70,9 +70,8 @@ export function createSkillTool(cwd: string): Tool<{ name: string; section?: str
     isConcurrencySafe: () => false,
     // not read-only: the skill body lands in the conversation framed as
     // "follow these instructions," which drives downstream Edit/Write/Bash
-    // calls. claiming read-only here short-circuits needsPermission() in
-    // orchestration.ts:54, killing the `requirePermission` gate. flagging
-    // false honors the operator's `require-permission: true` frontmatter.
+    // calls. isReadOnly is a concurrency/UI hint; the `require-permission`
+    // gate is enforced by checkPermissions below.
     isReadOnly: () => false,
     checkPermissions: (input) => {
       try {

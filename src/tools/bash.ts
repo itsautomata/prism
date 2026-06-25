@@ -41,6 +41,27 @@ const DANGEROUS_PATTERNS = [
   /\bkill\s+-9\b/,
 ]
 
+// shell metacharacters that turn a safe-looking first token into a compound
+// command: chaining (; && ||), piping (|), redirection (< >), substitution
+// ($ ` $(...)), subshells ( ), background (&), and newlines. their presence
+// means the command is not a single safe invocation, whatever it starts with.
+const SHELL_METACHARS = /[;&|<>$`\n()]/
+
+/**
+ * a command is simple-safe only when the entire trimmed command is one known
+ * safe command, carries no shell operators, and matches no dangerous pattern.
+ * first-token matching alone is unsafe: `echo ok && rm -rf ~` starts with a
+ * safe token but is destructive. this is the single source of truth for both
+ * the read-only/concurrency hints and the auto-allow decision.
+ */
+function isSimpleSafeCommand(command: string): boolean {
+  const cmd = command.trim()
+  if (SHELL_METACHARS.test(cmd)) return false
+  if (DANGEROUS_PATTERNS.some(p => p.test(cmd))) return false
+  const firstToken = cmd.split(/\s+/)[0] || ''
+  return SAFE_COMMANDS.has(firstToken) || SAFE_COMMANDS.has(cmd)
+}
+
 const inputSchema = z.object({
   command: z.string().describe('the shell command to execute'),
   description: z.string().optional().describe('what this command does'),
@@ -98,16 +119,15 @@ export const BashTool = buildTool<BashInput>({
   },
 
   isConcurrencySafe(input: BashInput): boolean {
-    const cmd = input.command.trim().split(/\s+/)[0] || ''
-    return SAFE_COMMANDS.has(cmd) || SAFE_COMMANDS.has(input.command.trim())
+    return isSimpleSafeCommand(input.command)
   },
 
   isReadOnly(input: BashInput): boolean {
-    const cmd = input.command.trim().split(/\s+/)[0] || ''
-    return SAFE_COMMANDS.has(cmd) || SAFE_COMMANDS.has(input.command.trim())
+    return isSimpleSafeCommand(input.command)
   },
 
   checkPermissions(input: BashInput): PermissionResult {
+    // dangerous patterns always prompt, even when they start with a safe token
     for (const pattern of DANGEROUS_PATTERNS) {
       if (pattern.test(input.command)) {
         return {
@@ -117,8 +137,8 @@ export const BashTool = buildTool<BashInput>({
       }
     }
 
-    // read-only commands auto-allow
-    if (SAFE_COMMANDS.has(input.command.trim().split(/\s+/)[0] || '')) {
+    // only a genuinely simple, single safe command (no operators) auto-allows
+    if (isSimpleSafeCommand(input.command)) {
       return { behavior: 'allow' }
     }
 

@@ -6,20 +6,20 @@ describe('permissions', () => {
     clearSessionRules()
   })
 
-  it('read-only tools never need permission', () => {
-    expect(needsPermission('Read', { behavior: 'ask', message: '' }, true)).toBe(false)
+  it('read-only tools auto-allow via the allow behavior', () => {
+    expect(needsPermission('Read', { behavior: 'allow' })).toBe(false)
   })
 
-  it('write tools need permission when result is ask', () => {
-    expect(needsPermission('Write', { behavior: 'ask', message: '' }, false)).toBe(true)
+  it('a tool that returns ask always needs permission (no isReadOnly bypass)', () => {
+    expect(needsPermission('Write', { behavior: 'ask', message: '' })).toBe(true)
   })
 
   it('tools with allow behavior skip permission', () => {
-    expect(needsPermission('Bash', { behavior: 'allow' }, false)).toBe(false)
+    expect(needsPermission('Bash', { behavior: 'allow' })).toBe(false)
   })
 
   it('tools with deny behavior skip permission (denied at execution)', () => {
-    expect(needsPermission('Bash', { behavior: 'deny', message: 'blocked' }, false)).toBe(false)
+    expect(needsPermission('Bash', { behavior: 'deny', message: 'blocked' })).toBe(false)
   })
 
   it('session allow rules persist', () => {
@@ -30,7 +30,7 @@ describe('permissions', () => {
 
   it('session-allowed tools skip permission', () => {
     allowForSession('Bash')
-    expect(needsPermission('Bash', { behavior: 'ask', message: '' }, false)).toBe(false)
+    expect(needsPermission('Bash', { behavior: 'ask', message: '' })).toBe(false)
   })
 
   it('clear removes all session rules', () => {

@@ -23,6 +23,10 @@ export interface ToolUseBlock {
   id: string
   name: string
   input: Record<string, unknown>
+  // set when the provider sent argument text that failed to parse as JSON.
+  // the orchestrator refuses to execute these rather than running the tool
+  // with silently-empty input.
+  invalidArgs?: boolean
 }
 
 export interface ToolResultBlock {

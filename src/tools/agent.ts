@@ -11,7 +11,7 @@
  */
 
 import { z } from 'zod'
-import { buildTool, type ToolResult, type ToolContext, type Tool } from './Tool.js'
+import { buildTool, type ToolResult, type ToolContext, type Tool, type PermissionResult } from './Tool.js'
 import { runAgent, type AgentProgressEvent } from '../agents/runner.js'
 import { resolveAgent, AgentNotFoundError, AgentValidationError } from '../agents/registry.js'
 import { RECOVERY_AGENT } from '../agents/definition.js'
@@ -57,6 +57,19 @@ export interface CreateAgentToolOptions {
 export function createAgentTool(opts: CreateAgentToolOptions): Tool<AgentInput> {
   const subagentTools = opts.subagentTools.filter(t => t.name !== 'Agent')
   const boundCwd = opts.cwd ?? process.cwd()
+
+  // resolve the requested agent's definition for the safety/permission hooks.
+  // returns null for an unknown or broken definition — callers treat that as
+  // "not sandboxed" (fail closed: prompt, run serial).
+  const resolveRequested = (input: AgentInput) => {
+    try {
+      const requested = input.agent?.trim()
+      const agentName = requested && requested.length > 0 ? requested : undefined
+      return resolveAgent(agentName, boundCwd)
+    } catch {
+      return null
+    }
+  }
 
   return buildTool<AgentInput>({
     name: 'Agent',
@@ -114,18 +127,19 @@ export function createAgentTool(opts: CreateAgentToolOptions): Tool<AgentInput> 
     // inherit can write through the parent's resolver; two inherit agents
     // in the same batch could race on shared files. serialize those.
     // unresolvable agents (unknown name, broken file) → assume unsafe.
-    isConcurrencySafe: (input: AgentInput) => {
-      try {
-        const requested = input.agent?.trim()
-        const agentName = requested && requested.length > 0 ? requested : undefined
-        const agent = resolveAgent(agentName, boundCwd)
-        return agent.permissions === 'deny-writes'
-      } catch {
-        return false
-      }
-    },
-    isReadOnly: () => true, // agents report back, parent decides what to do
+    isConcurrencySafe: (input: AgentInput) => resolveRequested(input)?.permissions === 'deny-writes',
 
-    checkPermissions: () => ({ behavior: 'allow' }), // auto-allow agent spawning
+    // a spawn is only read-only when the requested agent cannot write. inherit
+    // agents write through the parent's resolver, so they are not read-only.
+    isReadOnly: (input: AgentInput) => resolveRequested(input)?.permissions === 'deny-writes',
+
+    // deny-writes agents are sandboxed → auto-allow the spawn. inherit agents
+    // can mutate state through the parent's resolver → prompt before spawning.
+    checkPermissions: (input: AgentInput): PermissionResult => {
+      const agent = resolveRequested(input)
+      if (agent?.permissions === 'deny-writes') return { behavior: 'allow' }
+      const label = agent?.name ?? input.agent ?? 'agent'
+      return { behavior: 'ask', message: `spawn write-capable agent "${label}"` }
+    },
   })
 }
