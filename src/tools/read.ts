@@ -7,6 +7,7 @@
 import { z } from 'zod'
 import { readFileSync, statSync } from 'fs'
 import { buildTool, type ToolResult, type ToolContext } from './Tool.js'
+import { classifyRead, readAskMessage } from './sensitivePaths.js'
 import { resolve, isAbsolute, extname } from 'path'
 import { parsePdf } from '../parsers/pdf.js'
 import { parseDocx } from '../parsers/docx.js'
@@ -78,7 +79,15 @@ export const ReadTool = buildTool<ReadInput>({
   isConcurrencySafe: () => true,
   isReadOnly: () => true,
 
-  checkPermissions: () => ({ behavior: 'allow' }),
+  // reads inside the project auto-allow; reads outside it (home dotfiles,
+  // ~/.ssh, /etc) and in-project secret files prompt, so an injected agent
+  // can't silently pull credentials into context.
+  checkPermissions: (input: ReadInput, context: ToolContext) => {
+    const c = classifyRead(input.file_path, context.cwd)
+    return c.allow
+      ? { behavior: 'allow' as const }
+      : { behavior: 'ask' as const, message: readAskMessage(input.file_path, c.reason) }
+  },
 })
 
 function readTextFile(

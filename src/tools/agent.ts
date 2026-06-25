@@ -108,6 +108,7 @@ export function createAgentTool(opts: CreateAgentToolOptions): Tool<AgentInput> 
         tools: subagentTools,
         signal: context.signal,
         onProgress: opts.onProgress,
+        cwd: context.cwd,
       })
 
       if (!result.success) {

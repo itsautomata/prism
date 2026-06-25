@@ -41,6 +41,9 @@ export interface AgentTask {
   onProgress?: (event: AgentProgressEvent) => void
   /** the parent's permission resolver, threaded through when agent.permissions is 'inherit'. */
   askPermission?: PermissionResolver
+  /** the parent's working directory. subagents run in the same project tree as
+   *  the parent so read confinement (in-project vs outside) matches. */
+  cwd?: string
 }
 
 export interface AgentResult {
@@ -101,7 +104,7 @@ export async function runAgent(agent: Agent, task: AgentTask): Promise<AgentResu
     { role: 'user', content: [{ type: 'text', text: prompt }] },
   ]
 
-  const context = { cwd: process.cwd(), signal }
+  const context = { cwd: task.cwd ?? process.cwd(), signal }
   let turnCount = 0
   let finalOutput = ''
 

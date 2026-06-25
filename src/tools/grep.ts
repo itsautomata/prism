@@ -7,6 +7,7 @@
 import { z } from 'zod'
 import { execFileSync } from 'child_process'
 import { buildTool, type ToolResult, type ToolContext } from './Tool.js'
+import { classifyRead, readAskMessage } from './sensitivePaths.js'
 import { resolve, isAbsolute } from 'path'
 
 const inputSchema = z.object({
@@ -91,7 +92,14 @@ export const GrepTool = buildTool<GrepInput>({
   isConcurrencySafe: () => true,
   isReadOnly: () => true,
 
-  checkPermissions: () => ({ behavior: 'allow' }),
+  // searching outside the project (or a secret file) prompts: grep content mode
+  // returns file contents, so an unbounded search is a secret-read channel.
+  checkPermissions: (input: GrepInput, context: ToolContext) => {
+    const c = classifyRead(input.path ?? context.cwd, context.cwd)
+    return c.allow
+      ? { behavior: 'allow' as const }
+      : { behavior: 'ask' as const, message: readAskMessage(input.path ?? context.cwd, c.reason) }
+  },
 })
 
 function buildRgArgs(

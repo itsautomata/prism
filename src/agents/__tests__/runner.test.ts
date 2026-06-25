@@ -137,6 +137,7 @@ describe('runAgent permission policy', () => {
       model: 'scripted',
       tools: [ReadTool],
       onProgress: e => progress.push(e),
+      cwd: TEST_DIR, // the file lives in the project tree the agent runs in
     })
 
     const toolResults = progress.filter(e => e.type === 'tool_result')
@@ -144,6 +145,30 @@ describe('runAgent permission policy', () => {
     const read = toolResults[0]!
     expect(read.isError).toBeFalsy()
     expect((read as { result: string }).result).toContain('hello from prism')
+  })
+
+  it('denies a sandboxed read outside the project tree', async () => {
+    // deny-writes subagent: a read confined to the project passes (above), but
+    // a read outside it (e.g. /etc/hosts, ~/.ssh) is now an 'ask' → the
+    // deny-writes resolver blocks it. closes the subagent secret-read path.
+    const provider = scriptedProvider([
+      toolCallTurn('r1', 'Read', { file_path: '/etc/hosts' }),
+      textTurn('done.'),
+    ])
+
+    await runAgent(DEFAULT_AGENT, {
+      prompt: 'read it',
+      description: 'outside read',
+      provider,
+      model: 'scripted',
+      tools: [ReadTool],
+      onProgress: e => progress.push(e),
+      cwd: TEST_DIR,
+    })
+
+    const results = progress.filter(e => e.type === 'tool_result')
+    expect(results).toHaveLength(1)
+    expect(results[0]!.isError).toBe(true)
   })
 
   it('allows read-only Bash through (recovery-agent path)', async () => {

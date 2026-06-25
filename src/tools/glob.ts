@@ -7,6 +7,7 @@
 import { z } from 'zod'
 import { execFileSync } from 'child_process'
 import { buildTool, type ToolResult, type ToolContext } from './Tool.js'
+import { classifyRead, readAskMessage } from './sensitivePaths.js'
 import { resolve, isAbsolute } from 'path'
 
 const inputSchema = z.object({
@@ -86,5 +87,12 @@ export const GlobTool = buildTool<GlobInput>({
   isConcurrencySafe: () => true,
   isReadOnly: () => true,
 
-  checkPermissions: () => ({ behavior: 'allow' }),
+  // enumerating a directory outside the project prompts: listing ~/.ssh or
+  // ~/.aws leaks the location of credentials even without reading them.
+  checkPermissions: (input: GlobInput, context: ToolContext) => {
+    const c = classifyRead(input.path ?? context.cwd, context.cwd)
+    return c.allow
+      ? { behavior: 'allow' as const }
+      : { behavior: 'ask' as const, message: readAskMessage(input.path ?? context.cwd, c.reason) }
+  },
 })

@@ -8,6 +8,7 @@ import { z } from 'zod'
 import { exec } from 'child_process'
 import { promisify } from 'util'
 import { buildTool, type ToolResult, type ToolContext, type PermissionResult } from './Tool.js'
+import { classifyRead } from './sensitivePaths.js'
 import { loadConfig } from '../config/config.js'
 
 // promisified exec keeps the node event loop free during the command
@@ -126,7 +127,7 @@ export const BashTool = buildTool<BashInput>({
     return isSimpleSafeCommand(input.command)
   },
 
-  checkPermissions(input: BashInput): PermissionResult {
+  checkPermissions(input: BashInput, context: ToolContext): PermissionResult {
     // dangerous patterns always prompt, even when they start with a safe token
     for (const pattern of DANGEROUS_PATTERNS) {
       if (pattern.test(input.command)) {
@@ -137,8 +138,17 @@ export const BashTool = buildTool<BashInput>({
       }
     }
 
-    // only a genuinely simple, single safe command (no operators) auto-allows
+    // a simple safe command auto-allows — unless a path argument escapes the
+    // project (e.g. `cat ~/.ssh/id_rsa`). a safe read command pointed outside
+    // the project is a secret-read channel, so it prompts.
     if (isSimpleSafeCommand(input.command)) {
+      const args = input.command.trim().split(/\s+/).slice(1)
+      for (const arg of args) {
+        if (arg.startsWith('-')) continue // flag, not a path
+        if (!classifyRead(arg, context.cwd).allow) {
+          return { behavior: 'ask', message: `run: ${input.command}` }
+        }
+      }
       return { behavior: 'allow' }
     }
 

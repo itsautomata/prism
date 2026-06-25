@@ -428,6 +428,7 @@ check if relevant files/paths exist. then report:
     // turn cap and permission policy come from RECOVERY_AGENT.
     tools: opts.tools,
     signal: opts.signal,
+    cwd: opts.cwd,
   })
 
   return result.output || 'recovery agent could not diagnose the error'
