@@ -35,18 +35,19 @@ afterAll(() => {
 
 describe('cache: round trip', () => {
   it('returns null before anything is written', () => {
-    expect(getCached(PROJECT_ID, '/abs/src/foo.ts', 1234)).toBeNull()
+    expect(getCached(PROJECT_ID, '/abs/src/foo.ts', 1234, 100)).toBeNull()
   })
 
   it('writes and reads back a cached entry', () => {
     setCached(PROJECT_ID, '/abs/src/foo.ts', {
       mtime: 1234,
+      size: 100,
       language: 'typescript',
       symbols: exampleSymbols(),
       imports: ['./bar.js'],
     })
 
-    const got = getCached(PROJECT_ID, '/abs/src/foo.ts', 1234)
+    const got = getCached(PROJECT_ID, '/abs/src/foo.ts', 1234, 100)
     expect(got).not.toBeNull()
     expect(got!.path).toBe('/abs/src/foo.ts')
     expect(got!.language).toBe('typescript')
@@ -59,21 +60,34 @@ describe('cache: round trip', () => {
   it('returns null when mtime does not match (file changed)', () => {
     setCached(PROJECT_ID, '/abs/src/foo.ts', {
       mtime: 1000,
+      size: 100,
       language: 'typescript',
       symbols: exampleSymbols(),
       imports: [],
     })
-    expect(getCached(PROJECT_ID, '/abs/src/foo.ts', 9999)).toBeNull()
+    expect(getCached(PROJECT_ID, '/abs/src/foo.ts', 9999, 100)).toBeNull()
+  })
+
+  it('returns null when size changed but mtime did not (mtime-preserving edit)', () => {
+    setCached(PROJECT_ID, '/abs/src/foo.ts', {
+      mtime: 1000,
+      size: 100,
+      language: 'typescript',
+      symbols: exampleSymbols(),
+      imports: [],
+    })
+    // same mtime (git checkout / touch -m can preserve it), different size
+    expect(getCached(PROJECT_ID, '/abs/src/foo.ts', 1000, 250)).toBeNull()
   })
 
   it('overwrites previous entry on rewrite', () => {
     setCached(PROJECT_ID, '/abs/src/foo.ts', {
-      mtime: 1, language: 'typescript', symbols: [], imports: [],
+      mtime: 1, size: 10, language: 'typescript', symbols: [], imports: [],
     })
     setCached(PROJECT_ID, '/abs/src/foo.ts', {
-      mtime: 2, language: 'typescript', symbols: exampleSymbols(), imports: ['./bar.js'],
+      mtime: 2, size: 20, language: 'typescript', symbols: exampleSymbols(), imports: ['./bar.js'],
     })
-    const got = getCached(PROJECT_ID, '/abs/src/foo.ts', 2)
+    const got = getCached(PROJECT_ID, '/abs/src/foo.ts', 2, 20)
     expect(got!.symbols).toHaveLength(2)
     expect(got!.imports).toEqual(['./bar.js'])
   })
@@ -83,7 +97,7 @@ describe('cache: corruption tolerance', () => {
   it('returns null on a corrupted entry instead of throwing', () => {
     // seed a valid entry
     setCached(PROJECT_ID, '/abs/src/foo.ts', {
-      mtime: 1, language: 'typescript', symbols: [], imports: [],
+      mtime: 1, size: 100, language: 'typescript', symbols: [], imports: [],
     })
 
     // corrupt the on-disk file: find it and write garbage
@@ -93,17 +107,13 @@ describe('cache: corruption tolerance', () => {
     expect(existsSync(path)).toBe(true)
     writeFileSync(path, '{ this is not json', 'utf-8')
 
-    expect(getCached(PROJECT_ID, '/abs/src/foo.ts', 1)).toBeNull()
+    expect(getCached(PROJECT_ID, '/abs/src/foo.ts', 1, 100)).toBeNull()
   })
 
   it('returns null when the stored path mismatches (hash collision guard)', () => {
     setCached(PROJECT_ID, '/abs/src/foo.ts', {
-      mtime: 1, language: 'typescript', symbols: [], imports: [],
+      mtime: 1, size: 100, language: 'typescript', symbols: [], imports: [],
     })
-    // ask for a different path that happens to share the same hash slot in theory
-    // (in practice sha256-16 collisions are vanishingly rare, but the guard exists)
-    // we can only test the negative path by reading the on-disk file and
-    // rewriting it to point at a different `path` field
     const { createHash } = require('crypto')
     const hash = createHash('sha256').update('/abs/src/foo.ts').digest('hex').slice(0, 16)
     const path = join(TEST_HOME, '.prism', 'cache', 'trees', PROJECT_ID, `${hash}.json`)
@@ -112,33 +122,33 @@ describe('cache: corruption tolerance', () => {
     writeFileSync(path, JSON.stringify(data), 'utf-8')
 
     // looking up the original path should now see the collision-mismatch and return null
-    expect(getCached(PROJECT_ID, '/abs/src/foo.ts', 1)).toBeNull()
+    expect(getCached(PROJECT_ID, '/abs/src/foo.ts', 1, 100)).toBeNull()
   })
 })
 
 describe('cache: project-scoped operations', () => {
   it('invalidateProject removes every entry for that project', () => {
-    setCached(PROJECT_ID, '/a/foo.ts', { mtime: 1, language: 'typescript', symbols: [], imports: [] })
-    setCached(PROJECT_ID, '/a/bar.ts', { mtime: 1, language: 'typescript', symbols: [], imports: [] })
-    setCached(PROJECT_ID, '/a/baz.ts', { mtime: 1, language: 'typescript', symbols: [], imports: [] })
+    setCached(PROJECT_ID, '/a/foo.ts', { mtime: 1, size: 1, language: 'typescript', symbols: [], imports: [] })
+    setCached(PROJECT_ID, '/a/bar.ts', { mtime: 1, size: 1, language: 'typescript', symbols: [], imports: [] })
+    setCached(PROJECT_ID, '/a/baz.ts', { mtime: 1, size: 1, language: 'typescript', symbols: [], imports: [] })
 
     expect(cacheStats(PROJECT_ID).entries).toBe(3)
 
     invalidateProject(PROJECT_ID)
     expect(cacheStats(PROJECT_ID).entries).toBe(0)
-    expect(getCached(PROJECT_ID, '/a/foo.ts', 1)).toBeNull()
+    expect(getCached(PROJECT_ID, '/a/foo.ts', 1, 1)).toBeNull()
   })
 
   it('two projects do not share cache state', () => {
-    setCached('proj-a', '/x/file.ts', { mtime: 1, language: 'typescript', symbols: exampleSymbols(), imports: [] })
-    setCached('proj-b', '/x/file.ts', { mtime: 1, language: 'typescript', symbols: [], imports: [] })
+    setCached('proj-a', '/x/file.ts', { mtime: 1, size: 1, language: 'typescript', symbols: exampleSymbols(), imports: [] })
+    setCached('proj-b', '/x/file.ts', { mtime: 1, size: 1, language: 'typescript', symbols: [], imports: [] })
 
-    expect(getCached('proj-a', '/x/file.ts', 1)!.symbols).toHaveLength(2)
-    expect(getCached('proj-b', '/x/file.ts', 1)!.symbols).toHaveLength(0)
+    expect(getCached('proj-a', '/x/file.ts', 1, 1)!.symbols).toHaveLength(2)
+    expect(getCached('proj-b', '/x/file.ts', 1, 1)!.symbols).toHaveLength(0)
 
     invalidateProject('proj-a')
-    expect(getCached('proj-a', '/x/file.ts', 1)).toBeNull()
-    expect(getCached('proj-b', '/x/file.ts', 1)).not.toBeNull()  // unaffected
+    expect(getCached('proj-a', '/x/file.ts', 1, 1)).toBeNull()
+    expect(getCached('proj-b', '/x/file.ts', 1, 1)).not.toBeNull()  // unaffected
   })
 
   it('cacheStats reports zero on a fresh project', () => {
@@ -146,7 +156,7 @@ describe('cache: project-scoped operations', () => {
   })
 
   it('cacheStats reports nonzero bytes after writes', () => {
-    setCached(PROJECT_ID, '/x.ts', { mtime: 1, language: 'typescript', symbols: exampleSymbols(), imports: [] })
+    setCached(PROJECT_ID, '/x.ts', { mtime: 1, size: 1, language: 'typescript', symbols: exampleSymbols(), imports: [] })
     const stats = cacheStats(PROJECT_ID)
     expect(stats.entries).toBe(1)
     expect(stats.bytes).toBeGreaterThan(0)

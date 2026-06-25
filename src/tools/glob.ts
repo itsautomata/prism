@@ -28,7 +28,14 @@ export const GlobTool = buildTool<GlobInput>({
       : context.cwd
 
     try {
-      const pattern = input.pattern.replace(/\*\*\//g, '')
+      // a pattern with a '/' is a path glob (e.g. "src/**/*.ts"). find -name only
+      // matches basenames and would return nothing, so translate to -path: strip
+      // "**/" and collapse "**" to "*" (which spans '/' under -path), then anchor
+      // with a leading '*' so it matches within the absolute path find prints.
+      // a pattern with no '/' stays on -name (matches basenames at any depth).
+      const matchArgs = input.pattern.includes('/')
+        ? ['-path', '*' + input.pattern.replace(/\*\*\//g, '').replace(/\*\*/g, '*')]
+        : ['-name', input.pattern.replace(/\*\*\//g, '')]
 
       const excludeDirs = [
         'node_modules', '.git', '.venv', 'venv', '__pycache__',
@@ -44,7 +51,7 @@ export const GlobTool = buildTool<GlobInput>({
       // metacharacters in path/pattern can't trigger command substitution.
       const output = execFileSync(
         'find',
-        [searchPath, '-type', 'f', '-name', pattern, ...excludeArgs],
+        [searchPath, '-type', 'f', ...matchArgs, ...excludeArgs],
         {
           cwd: searchPath,
           encoding: 'utf-8',

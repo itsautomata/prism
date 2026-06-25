@@ -29,6 +29,9 @@ export interface CachedSymbols {
   path: string
   /** file mtime (ms since epoch) at cache time. */
   mtime: number
+  /** file size in bytes at cache time. paired with mtime, this catches edits
+   *  that preserve mtime (git checkout, touch -m, sub-tick saves). */
+  size: number
   /** grammar that parsed the file. */
   language: string
   symbols: Symbol[]
@@ -56,13 +59,14 @@ function entryFile(projectId: string, filePath: string): string {
  *   - stored `path` doesn't match the supplied path (hash collision)
  *   - JSON parse fails (corruption)
  */
-export function getCached(projectId: string, filePath: string, mtime: number): CachedSymbols | null {
+export function getCached(projectId: string, filePath: string, mtime: number, size: number): CachedSymbols | null {
   const path = entryFile(projectId, filePath)
   if (!existsSync(path)) return null
   try {
     const data = JSON.parse(readFileSync(path, 'utf-8')) as CachedSymbols
     if (data.path !== filePath) return null  // hash collision
-    if (data.mtime !== mtime) return null    // file changed
+    if (data.mtime !== mtime) return null    // file changed (mtime)
+    if (data.size !== size) return null      // file changed (size; catches mtime-preserving edits)
     return data
   } catch {
     return null
@@ -76,7 +80,7 @@ export function getCached(projectId: string, filePath: string, mtime: number): C
 export function setCached(
   projectId: string,
   filePath: string,
-  data: { mtime: number; language: string; symbols: Symbol[]; imports: string[] },
+  data: { mtime: number; size: number; language: string; symbols: Symbol[]; imports: string[] },
 ): void {
   const dir = cacheDir(projectId)
   if (!existsSync(dir)) {
@@ -86,6 +90,7 @@ export function setCached(
   const entry: CachedSymbols = {
     path: filePath,
     mtime: data.mtime,
+    size: data.size,
     language: data.language,
     symbols: data.symbols,
     imports: data.imports,

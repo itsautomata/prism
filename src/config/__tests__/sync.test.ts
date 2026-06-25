@@ -11,7 +11,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterAll, vi } from 'vitest'
-import { rmSync, readFileSync } from 'fs'
+import { rmSync, readFileSync, writeFileSync, mkdirSync } from 'fs'
 import { join } from 'path'
 
 const { TEST_HOME } = vi.hoisted(() => ({
@@ -64,5 +64,28 @@ describe('tuning defaults: runtime ↔ template sync', () => {
     for (const key of keys) {
       expect(text, `template is missing the line for ${key}`).toContain(key)
     }
+  })
+})
+
+describe('parseToml: string fields are not numeric-coerced', () => {
+  it('keeps a numeric-looking unquoted api_key as the exact string', () => {
+    const dir = join(TEST_HOME, '.prism')
+    mkdirSync(dir, { recursive: true })
+    // unquoted, all digits, leading zero — parseInt would corrupt this
+    writeFileSync(getConfigPath(), '[openrouter]\napi_key = 0012345\n', 'utf-8')
+
+    const cfg = loadConfig()
+    expect(typeof cfg.openrouter.api_key).toBe('string')
+    expect(cfg.openrouter.api_key).toBe('0012345')
+  })
+
+  it('still coerces numeric [tuning] values to numbers', () => {
+    const dir = join(TEST_HOME, '.prism')
+    mkdirSync(dir, { recursive: true })
+    writeFileSync(getConfigPath(), '[tuning]\ncompaction_threshold = 0.7\nrepomap_max_files = 300\n', 'utf-8')
+
+    const cfg = loadConfig()
+    expect(cfg.tuning.compaction_threshold).toBe(0.7)
+    expect(cfg.tuning.repomap_max_files).toBe(300)
   })
 })

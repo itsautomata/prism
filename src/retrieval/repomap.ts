@@ -89,13 +89,16 @@ export async function extractRepoMap(cwd: string, opts: RepoMapOptions = {}): Pr
 
   for (const filePath of candidates) {
     let mtime = 0
+    let size = 0
     try {
-      mtime = statSync(filePath).mtimeMs
+      const st = statSync(filePath)
+      mtime = st.mtimeMs
+      size = st.size
     } catch {
       continue
     }
 
-    const cached = getCached(projectId, filePath, mtime)
+    const cached = getCached(projectId, filePath, mtime, size)
     if (cached) {
       cacheHits += 1
       if (cached.symbols.length > 0) {
@@ -125,6 +128,7 @@ export async function extractRepoMap(cwd: string, opts: RepoMapOptions = {}): Pr
 
     setCached(projectId, filePath, {
       mtime,
+      size,
       language: result.language,
       symbols: result.symbols,
       imports: result.imports,

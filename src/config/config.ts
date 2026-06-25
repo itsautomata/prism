@@ -157,10 +157,11 @@ export function loadConfig(): PrismConfig {
       // tuning section: every key is optional; missing entries fall back to defaults.
       if (parsed.tuning) {
         for (const key of Object.keys(TUNING_DEFAULTS) as (keyof TuningConfig)[]) {
-          const value = parsed.tuning[key]
-          if (typeof value === 'number' && Number.isFinite(value)) {
-            config.tuning[key] = value
-          }
+          const raw = parsed.tuning[key]
+          if (raw === undefined) continue
+          // tuning values arrive as raw strings from parseToml; coerce here.
+          const num = Number(raw)
+          if (Number.isFinite(num)) config.tuning[key] = num
         }
       }
     } catch {}
@@ -363,8 +364,10 @@ function parseToml(text: string): Record<string, any> {
     // skip empty lines and comments
     if (!trimmed || trimmed.startsWith('#')) continue
 
-    // section header
-    const sectionMatch = trimmed.match(/^\[([^\]]+)\]$/)
+    // section header (tolerate trailing whitespace / inline comment, e.g.
+    // "[tuning]  # my knobs" — otherwise the section is missed and migrateConfig
+    // re-appends a duplicate block on every launch)
+    const sectionMatch = trimmed.match(/^\[([^\]]+)\]\s*(?:#.*)?$/)
     if (sectionMatch) {
       const key = sectionMatch[1]!
       result[key] = result[key] || {}
@@ -379,20 +382,14 @@ function parseToml(text: string): Record<string, any> {
       continue
     }
 
-    // key = value (unquoted). strip inline comments, then coerce numeric forms
-    // to number so callers don't have to Number() at every read site.
+    // key = value (unquoted). strip inline comments and keep the raw string.
+    // values stay as raw strings, not coerced to number: that would corrupt a
+    // numeric-looking string field (an unquoted api_key, or a leading-zero
+    // value parseInt would truncate). callers coerce the fields they know to be
+    // numeric — see the [tuning] handling in loadConfig.
     const kvUnquoted = trimmed.match(/^(\w+)\s*=\s*(.+)$/)
     if (kvUnquoted) {
-      const raw = kvUnquoted[2]!.replace(/\s+#.*$/, '').trim()
-      if (/^-?\d+$/.test(raw)) {
-        currentSection[kvUnquoted[1]!] = parseInt(raw, 10)
-      } else if (/^-?\d+\.\d+$/.test(raw)) {
-        currentSection[kvUnquoted[1]!] = parseFloat(raw)
-      } else if (raw === 'true' || raw === 'false') {
-        currentSection[kvUnquoted[1]!] = raw === 'true'
-      } else {
-        currentSection[kvUnquoted[1]!] = raw
-      }
+      currentSection[kvUnquoted[1]!] = kvUnquoted[2]!.replace(/\s+#.*$/, '').trim()
     }
   }
 
