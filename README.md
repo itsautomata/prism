@@ -17,7 +17,8 @@ https://github.com/user-attachments/assets/3451a4ec-1a4f-431d-bd15-aba799b9cdf4
 requires Node.js 20+.
 
 ```bash
-npm install -g @itsautomata/prism
+npm install -g @itsautomata/prism            # install
+npm install -g @itsautomata/prism@latest     # upgrade to the latest release
 prism
 ```
 
@@ -107,7 +108,7 @@ sessions saved at `~/.prism/sessions/`.
 
 ## permissions
 
-write operations ask before executing. read operations auto-allow. by default, subagents are read-only. user-defined agents can declare `permissions: inherit` to write through the parent's permission prompt.
+write operations ask before executing. reads inside the project auto-allow; reads outside the project tree (home dotfiles, `~/.ssh`, secrets like `.env`) ask first. by default, subagents are read-only. user-defined agents can declare `permissions: inherit` to write through the parent's permission prompt.
 
 ```
 ◆ Bash wants to: run: git push
