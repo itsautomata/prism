@@ -129,17 +129,18 @@ describe('PromptInput: slash autocomplete', () => {
   it('tab completes to selected command name with trailing space if it takes args', async () => {
     const { stdin, lastFrame } = render(<PromptInput onSubmit={onSubmit} isLoading={false} />)
     stdin.write('/mo')
-    await tick()
-    // /mo matches /model (which has args)
+    // wait for the hint dropdown to render the /model match before tab. pressing
+    // tab before the dropdown computes its matches makes completion a no-op, which
+    // flakes under load — poll the condition instead of sleeping a fixed time.
+    for (let i = 0; i < 30 && !(lastFrame() ?? '').includes('model'); i++) await tick(15)
     stdin.write(KEY.tab)
     await tick()
     // type an arg char to expose the trailing space in the buffer.
     // (lastFrame trims trailing whitespace per line, so the bare space is invisible
     // unless followed by a non-space char.)
     stdin.write('x')
-    await tick(20)
-    const frame = lastFrame() ?? ''
-    expect(frame).toMatch(/\/model\sx/)
+    for (let i = 0; i < 30 && !/\/model\sx/.test(lastFrame() ?? ''); i++) await tick(15)
+    expect(lastFrame() ?? '').toMatch(/\/model\sx/)
   })
 
   it('tab completes to just the name with no trailing space if no args', async () => {
