@@ -8,6 +8,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync, readdirSync } from 'fs'
 import { join } from 'path'
 import { homedir } from 'os'
+import { randomBytes } from 'crypto'
 import type { Message } from '../types/index.js'
 import type { Session } from './types.js'
 
@@ -25,14 +26,16 @@ function sessionPath(id: string): string {
 
 /**
  * create a new session.
- * id is the iso timestamp with ms (sortable, ~23 chars, collision-proof at 1ms).
+ * id is the iso timestamp with ms plus a short random suffix, so it stays
+ * sortable but two sessions created in the same millisecond (two processes,
+ * a scripted launch) can't collide and overwrite each other on save.
  * cwd is stored as a field, no longer encoded in the id.
  */
 export function createSession(model: string, provider: string, cwd: string): Session {
   ensureDir()
   const now = new Date()
-  // 2026-04-21T18:14:29.123Z -> 2026-04-21T18-14-29-123
-  const id = now.toISOString().replace(/[:.]/g, '-').slice(0, 23)
+  // 2026-04-21T18:14:29.123Z -> 2026-04-21T18-14-29-123-<6 hex>
+  const id = now.toISOString().replace(/[:.]/g, '-').slice(0, 23) + '-' + randomBytes(3).toString('hex')
 
   return {
     id,

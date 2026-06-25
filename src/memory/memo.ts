@@ -23,8 +23,25 @@ export interface MemoMeta {
 }
 
 /**
+ * normalize a git remote url to a canonical `host/owner/repo` form so the same
+ * repo resolves to one id regardless of how it's addressed: https vs ssh,
+ * trailing slash, .git suffix, or an embedded userinfo. without this, cloning
+ * the same repo over ssh on one machine and https on another splits its memo.
+ */
+export function normalizeRemote(url: string): string {
+  let s = url.trim().toLowerCase().replace(/\/+$/, '').replace(/\.git$/, '')
+  // scp-like ssh: git@github.com:owner/repo
+  const scp = s.match(/^[^@]+@([^:]+):(.+)$/)
+  if (scp) return `${scp[1]}/${scp[2]}`
+  // scheme://[user@]host/path
+  const proto = s.match(/^[a-z][a-z0-9+.-]*:\/\/(?:[^@/]+@)?(.+)$/)
+  if (proto) return proto[1]
+  return s
+}
+
+/**
  * resolve a stable project id for the current cwd.
- * prefers git remote url; falls back to cwd. first 12 hex chars of sha256.
+ * prefers git remote url (normalized); falls back to cwd. first 12 hex of sha256.
  */
 export function getProjectId(cwd: string): string {
   let key = cwd
@@ -35,7 +52,7 @@ export function getProjectId(cwd: string): string {
       timeout: 1000,
       stdio: ['pipe', 'pipe', 'pipe'],
     }).trim()
-    if (remote) key = remote
+    if (remote) key = normalizeRemote(remote)
   } catch {
     // no git or no remote, fall through to cwd
   }

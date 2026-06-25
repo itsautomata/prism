@@ -26,6 +26,28 @@ beforeEach(() => {
   rmSync(join(TEST_HOME, '.prism'), { recursive: true, force: true })
 })
 
+describe('createSession id uniqueness', () => {
+  it('two sessions created in the same millisecond get distinct ids', () => {
+    const ids = new Set<string>()
+    for (let i = 0; i < 50; i++) {
+      ids.add(createSession('m', 'ollama', '/tmp/x').id)
+    }
+    expect(ids.size).toBe(50)
+  })
+
+  it('saving two same-tick sessions does not overwrite either', () => {
+    const a = createSession('m', 'ollama', '/tmp/x')
+    a.messages.push({ role: 'user', content: [{ type: 'text', text: 'a' }] })
+    const b = createSession('m', 'ollama', '/tmp/x')
+    b.messages.push({ role: 'user', content: [{ type: 'text', text: 'b' }] })
+    saveSession(a)
+    saveSession(b)
+    expect(loadSession(a.id)?.messages[0]).toMatchObject({ role: 'user' })
+    expect(loadSession(b.id)?.messages[0]).toMatchObject({ role: 'user' })
+    expect(a.id).not.toBe(b.id)
+  })
+})
+
 afterAll(() => {
   rmSync(TEST_HOME, { recursive: true, force: true })
 })
@@ -33,7 +55,7 @@ afterAll(() => {
 describe('createSession', () => {
   it('returns a Session with all fields populated', () => {
     const s = createSession('qwen3:14b', 'ollama', '/some/cwd')
-    expect(s.id).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}$/)
+    expect(s.id).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}-[0-9a-f]{6}$/)
     expect(s.model).toBe('qwen3:14b')
     expect(s.provider).toBe('ollama')
     expect(s.cwd).toBe('/some/cwd')

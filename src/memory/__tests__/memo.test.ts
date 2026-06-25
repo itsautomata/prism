@@ -12,7 +12,7 @@ vi.mock('os', async () => {
   return { ...actual, homedir: () => TEST_HOME }
 })
 
-import { getProjectId, loadMemo, saveMemo, appendMemo, backupMemo, getMemoMeta } from '../memo.js'
+import { getProjectId, loadMemo, saveMemo, appendMemo, backupMemo, getMemoMeta, normalizeRemote } from '../memo.js'
 
 const PROJECTS_DIR = join(TEST_HOME, '.prism', 'projects')
 
@@ -22,6 +22,24 @@ beforeEach(() => {
 
 afterAll(() => {
   rmSync(TEST_HOME, { recursive: true, force: true })
+})
+
+describe('normalizeRemote', () => {
+  it('maps https, ssh, .git, trailing-slash and userinfo forms to one canonical id', () => {
+    const canonical = 'github.com/user/repo'
+    expect(normalizeRemote('https://github.com/user/repo.git')).toBe(canonical)
+    expect(normalizeRemote('https://github.com/user/repo')).toBe(canonical)
+    expect(normalizeRemote('https://github.com/user/repo/')).toBe(canonical)
+    expect(normalizeRemote('git@github.com:user/repo.git')).toBe(canonical)
+    expect(normalizeRemote('ssh://git@github.com/user/repo.git')).toBe(canonical)
+    expect(normalizeRemote('https://token@github.com/user/repo')).toBe(canonical)
+    expect(normalizeRemote('HTTPS://GitHub.com/User/Repo.git')).toBe('github.com/user/repo')
+  })
+
+  it('distinct repos stay distinct', () => {
+    expect(normalizeRemote('git@github.com:user/repo-a.git'))
+      .not.toBe(normalizeRemote('git@github.com:user/repo-b.git'))
+  })
 })
 
 describe('getProjectId', () => {

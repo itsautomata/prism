@@ -10,6 +10,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { homedir } from 'os'
+import { createHash } from 'crypto'
 
 export interface LearnedRule {
   rule: string          // what the model should or shouldn't do
@@ -32,9 +33,13 @@ function ensureDir(): void {
 }
 
 function profilePath(model: string): string {
-  // sanitize model name for filesystem
+  // sanitize for the filesystem, but that mapping is lossy: `anthropic/claude`
+  // and `anthropic:claude` both sanitize to `anthropic_claude`. append a short
+  // hash of the exact model name so two distinct models never share a file (and
+  // never cross-contaminate each other's learned rules).
   const safe = model.replace(/[^a-zA-Z0-9._-]/g, '_')
-  return join(PROFILES_DIR, `${safe}.json`)
+  const hash = createHash('sha256').update(model).digest('hex').slice(0, 8)
+  return join(PROFILES_DIR, `${safe}-${hash}.json`)
 }
 
 export function loadProfile(model: string): ModelProfile {
@@ -106,9 +111,18 @@ export function listProfiles(): string[] {
   ensureDir()
   try {
     const { readdirSync } = require('fs')
+    // read the exact model name from each file's `model` field rather than
+    // deriving it from the (sanitized + hashed) filename.
     return readdirSync(PROFILES_DIR)
       .filter((f: string) => f.endsWith('.json'))
-      .map((f: string) => f.replace('.json', ''))
+      .map((f: string) => {
+        try {
+          const data = JSON.parse(readFileSync(join(PROFILES_DIR, f), 'utf-8'))
+          return typeof data.model === 'string' ? data.model : f.replace('.json', '')
+        } catch {
+          return f.replace('.json', '')
+        }
+      })
   } catch {
     return []
   }
