@@ -424,3 +424,35 @@ describe('sliceToLines', () => {
     expect(sliced.buf).toContainEqual({ kind: 'pill', id: 'p1', size: 99 })
   })
 })
+
+describe('astral / surrogate-pair handling (code-point atoms)', () => {
+  const noSurrogates = (s: string) =>
+    [...s].every(c => { const n = c.charCodeAt(0); return n < 0xd800 || n > 0xdfff })
+
+  it('counts an emoji as one atom', () => {
+    expect(flatLength(insertText(createBuffer(), 0, 'a😀b'))).toBe(3)
+  })
+
+  it('deleteBack removes a whole emoji without leaving a lone surrogate', () => {
+    const buf = insertText(createBuffer(), 0, 'a😀b')
+    const { buf: after, pos } = deleteBack(buf, 2) // cursor between the emoji and b
+    const text = expand(after, new Map())
+    expect(text).toBe('ab')
+    expect(pos).toBe(1)
+    expect(noSurrogates(text)).toBe(true)
+  })
+
+  it('deleteForward removes a whole emoji', () => {
+    const buf = insertText(createBuffer(), 0, '😀x')
+    expect(flatLength(buf)).toBe(2)
+    const { buf: after } = deleteForward(buf, 0)
+    expect(expand(after, new Map())).toBe('x')
+  })
+
+  it('cursor up/down preserve column across an emoji line', () => {
+    const buf = insertText(createBuffer(), 0, 'a😀b\nxyz')
+    // line 0 is 3 atoms (a, emoji, b); moving down from col 3 and back up holds
+    const downThenUp = moveCursorUp(buf, moveCursorDown(buf, 3))
+    expect(downThenUp).toBe(3)
+  })
+})

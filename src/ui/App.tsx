@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo, useEffect } from 'react'
+import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react'
 import { Box, useApp, useInput } from 'ink'
 import { Banner } from './Banner.js'
 import { MessageList, type DisplayMessage } from './MessageList.js'
@@ -86,6 +86,9 @@ export function App({ provider: initProvider, model: initModel, tools: baseTools
 
   const [displayMessages, setDisplayMessages] = useState<DisplayMessage[]>(() => rebuildDisplayMessages(initialMessages))
   const [isLoading, setIsLoading] = useState(false)
+  // synchronous re-entrancy guard for submits. isLoading is async react state
+  // and flips a tick late, leaving a window where two fast Enters both submit.
+  const submittingRef = useRef(false)
   const [turnCount, setTurnCount] = useState(0)
   const [tokenInfo, setTokenInfo] = useState('')
   const [spinnerPhase, setSpinnerPhase] = useState<SpinnerPhase>('thinking')
@@ -326,9 +329,18 @@ export function App({ provider: initProvider, model: initModel, tools: baseTools
       if (handled) return
     }
 
-    setDisplayMessages(prev => [...prev, { role: 'user', text: input }])
-    messages.push({ role: 'user', content: [{ type: 'text', text: input }] })
-    await runModelLoop()
+    // re-entrancy guard: two Enters in quick succession (key autorepeat, a
+    // paste ending in \n\n) can both land here before isLoading deactivates the
+    // input, pushing a duplicate turn and starting an overlapping model loop.
+    if (submittingRef.current) return
+    submittingRef.current = true
+    try {
+      setDisplayMessages(prev => [...prev, { role: 'user', text: input }])
+      messages.push({ role: 'user', content: [{ type: 'text', text: input }] })
+      await runModelLoop()
+    } finally {
+      submittingRef.current = false
+    }
   }, [provider, model, tools, messages, getSystemPrompt, inPlanMode, triggerSyntheticTurn])
 
   return (

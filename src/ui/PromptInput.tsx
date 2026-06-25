@@ -340,7 +340,7 @@ export const PromptInput = memo(function PromptInput({ onSubmit, isLoading, inPl
               : selected.name + (selected.args ? ' ' : '')
           if (liveText !== newText) {
             bufferRef.current = [{ kind: 'text', chars: newText }]
-            cursorRef.current = newText.length
+            cursorRef.current = [...newText].length
             flushNow()
             return
           }
@@ -469,7 +469,9 @@ export const PromptInput = memo(function PromptInput({ onSubmit, isLoading, inPl
     }
 
     bufferRef.current = insertText(bufferRef.current, cursorRef.current, input)
-    cursorRef.current += input.length
+    // advance by code points, not UTF-16 units: an emoji is one atom in the
+    // buffer, so advancing by input.length would land the cursor past the end.
+    cursorRef.current += [...input].length
     scheduleDisplayUpdate()
   }, { isActive: !isLoading })
 
@@ -532,7 +534,7 @@ export const PromptInput = memo(function PromptInput({ onSubmit, isLoading, inPl
   }
 
   const renderAtomLen = renderSegs.reduce(
-    (acc, s) => acc + (s.kind === 'text' ? s.chars.length : 1),
+    (acc, s) => acc + (s.kind === 'text' ? [...s.chars].length : 1),
     0,
   )
   const cursorOnEnd = renderCursor >= renderAtomLen

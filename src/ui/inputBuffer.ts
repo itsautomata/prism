@@ -6,6 +6,14 @@
  */
 import { randomUUID } from 'crypto'
 
+// code-point-aware string ops. one atom is one Unicode code point, not one
+// UTF-16 code unit: an emoji / astral char is a surrogate pair (2 units) but a
+// single atom. slicing or indexing by code unit would split a pair into lone
+// surrogates that corrupt the buffer and get submitted to the model.
+const cp = (s: string): string[] => Array.from(s)
+const clen = (s: string): number => cp(s).length
+const cslice = (s: string, a?: number, b?: number): string => cp(s).slice(a, b).join('')
+
 export interface TextSegment {
   kind: 'text'
   chars: string
@@ -36,7 +44,7 @@ export function createBuffer(): Buffer {
 /** total length in atoms: text chars + 1 per pill. */
 export function flatLength(buf: Buffer): number {
   let n = 0
-  for (const seg of buf) n += seg.kind === 'text' ? seg.chars.length : 1
+  for (const seg of buf) n += seg.kind === 'text' ? clen(seg.chars) : 1
   return n
 }
 
@@ -50,7 +58,7 @@ export function locate(buf: Buffer, pos: number): { segIdx: number; offset: numb
   let consumed = 0
   for (let i = 0; i < buf.length; i++) {
     const seg = buf[i]!
-    const len = seg.kind === 'text' ? seg.chars.length : 1
+    const len = seg.kind === 'text' ? clen(seg.chars) : 1
     if (clamped <= consumed + len) {
       return { segIdx: i, offset: clamped - consumed }
     }
@@ -89,7 +97,7 @@ export function insertText(buf: Buffer, pos: number, str: string): Buffer {
     const seg = buf[i]!
     if (i !== segIdx) { next.push(seg); continue }
     if (seg.kind === 'text') {
-      next.push({ kind: 'text', chars: seg.chars.slice(0, offset) + str + seg.chars.slice(offset) })
+      next.push({ kind: 'text', chars: cslice(seg.chars, 0, offset) + str + cslice(seg.chars, offset) })
     } else {
       // pill at this index: insert before or after depending on offset
       if (offset === 0) {
@@ -132,7 +140,7 @@ export function insertPill(
     if (i !== segIdx) { next.push(seg); continue }
     if (seg.kind === 'text') {
       // split the text segment: head, pill, tail
-      next.push({ kind: 'text', chars: seg.chars.slice(0, offset) }, pill, { kind: 'text', chars: seg.chars.slice(offset) })
+      next.push({ kind: 'text', chars: cslice(seg.chars, 0, offset) }, pill, { kind: 'text', chars: cslice(seg.chars, offset) })
     } else {
       if (offset === 0) next.push(pill, seg)
       else next.push(seg, pill)
@@ -161,11 +169,11 @@ export function deleteBack(buf: Buffer, pos: number): { buf: Buffer; pos: number
           const prev = next.pop()
           if (!prev) { next.push(seg); break }
           if (prev.kind === 'text') {
-            next.push({ kind: 'text', chars: prev.chars.slice(0, -1) })
+            next.push({ kind: 'text', chars: cslice(prev.chars, 0, -1) })
           } // pill: just drop it
           removed = 1
         } else {
-          next.push({ kind: 'text', chars: seg.chars.slice(0, offset - 1) + seg.chars.slice(offset) })
+          next.push({ kind: 'text', chars: cslice(seg.chars, 0, offset - 1) + cslice(seg.chars, offset) })
           removed = 1
         }
       } else {
@@ -175,7 +183,7 @@ export function deleteBack(buf: Buffer, pos: number): { buf: Buffer; pos: number
           const prev = next.pop()
           if (!prev) { next.push(seg); break }
           if (prev.kind === 'text') {
-            next.push({ kind: 'text', chars: prev.chars.slice(0, -1) })
+            next.push({ kind: 'text', chars: cslice(prev.chars, 0, -1) })
           }
           next.push(seg)
           removed = 1
@@ -202,19 +210,19 @@ export function deleteForward(buf: Buffer, pos: number): { buf: Buffer; pos: num
     const seg = buf[i]!
     if (i !== segIdx) { next.push(seg); continue }
     if (seg.kind === 'text') {
-      if (offset >= seg.chars.length) {
+      if (offset >= clen(seg.chars)) {
         // boundary: cursor is at end of this text segment, target is the next segment's first atom
         next.push(seg)
         const target = buf[i + 1]
         if (target?.kind === 'text') {
-          next.push({ kind: 'text', chars: target.chars.slice(1) })
+          next.push({ kind: 'text', chars: cslice(target.chars, 1) })
           i++ // skip the consumed next segment
         } else if (target?.kind === 'pill') {
           // skip the pill (delete it)
           i++
         }
       } else {
-        next.push({ kind: 'text', chars: seg.chars.slice(0, offset) + seg.chars.slice(offset + 1) })
+        next.push({ kind: 'text', chars: cslice(seg.chars, 0, offset) + cslice(seg.chars, offset + 1) })
       }
     } else {
       // pill: deletion target depends on offset
@@ -223,7 +231,7 @@ export function deleteForward(buf: Buffer, pos: number): { buf: Buffer; pos: num
         next.push(seg)
         const target = buf[i + 1]
         if (target?.kind === 'text') {
-          next.push({ kind: 'text', chars: target.chars.slice(1) })
+          next.push({ kind: 'text', chars: cslice(target.chars, 1) })
           i++
         } else if (target?.kind === 'pill') {
           i++
@@ -277,10 +285,10 @@ export function wordBoundaryLeft(buf: Buffer, pos: number): number {
       i -= 1
       if (i < 0) return 0
       const prev = buf[i]!
-      off = prev.kind === 'text' ? prev.chars.length : 1
+      off = prev.kind === 'text' ? clen(prev.chars) : 1
       continue
     }
-    const ch = cur.chars[off - 1]!
+    const ch = cp(cur.chars)[off - 1]!
     const isWordChar = /\w/.test(ch)
     if (isWordChar) inWord = true
     else if (inWord) return cursor
@@ -317,12 +325,12 @@ export function wordBoundaryRight(buf: Buffer, pos: number): number {
       // pinned at the pill seam, which is not what readline-style nav expects.
       return cursor + 1
     }
-    if (off >= cur.chars.length) {
+    if (off >= clen(cur.chars)) {
       i += 1
       off = 0
       continue
     }
-    const ch = cur.chars[off]!
+    const ch = cp(cur.chars)[off]!
     const isWordChar = /\w/.test(ch)
     if (isWordChar) inWord = true
     else if (inWord) return cursor
@@ -371,8 +379,8 @@ export function totalLines(buf: Buffer): number {
   let n = 1
   for (const seg of buf) {
     if (seg.kind === 'text') {
-      for (let i = 0; i < seg.chars.length; i++) {
-        if (seg.chars[i] === '\n') n++
+      for (const ch of cp(seg.chars)) {
+        if (ch === '\n') n++
       }
     }
   }
@@ -388,9 +396,9 @@ export function flatToLineCol(buf: Buffer, pos: number): { line: number; col: nu
   for (const seg of buf) {
     if (consumed >= pos) return { line, col }
     if (seg.kind === 'text') {
-      for (let i = 0; i < seg.chars.length; i++) {
+      for (const ch of cp(seg.chars)) {
         if (consumed >= pos) return { line, col }
-        if (seg.chars[i] === '\n') { line++; col = 0 } else { col++ }
+        if (ch === '\n') { line++; col = 0 } else { col++ }
         consumed++
       }
     } else {
@@ -410,8 +418,7 @@ export function lineColToFlat(buf: Buffer, targetLine: number, targetCol: number
   let pos = 0
   for (const seg of buf) {
     if (seg.kind === 'text') {
-      for (let i = 0; i < seg.chars.length; i++) {
-        const ch = seg.chars[i]
+      for (const ch of cp(seg.chars)) {
         if (line === targetLine && col >= targetCol) return pos
         if (line === targetLine && ch === '\n') return pos
         if (line > targetLine) return pos
@@ -460,8 +467,7 @@ export function sliceToLines(
     if (line >= endLine) break
     if (seg.kind === 'text') {
       let chunk = ''
-      for (let i = 0; i < seg.chars.length; i++) {
-        const ch = seg.chars[i]!
+      for (const ch of cp(seg.chars)) {
         if (line < startLine) {
           if (consumed < cursor) cursorDropped++
         } else if (line < endLine) {
@@ -486,7 +492,7 @@ export function sliceToLines(
   }
 
   let cursorOut = Math.max(0, cursor - cursorDropped)
-  const newLen = result.reduce((n, s) => n + (s.kind === 'text' ? s.chars.length : 1), 0)
+  const newLen = result.reduce((n, s) => n + (s.kind === 'text' ? clen(s.chars) : 1), 0)
   if (cursorOut > newLen) cursorOut = newLen
   return { buf: result, cursor: cursorOut }
 }

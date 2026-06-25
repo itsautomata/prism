@@ -188,6 +188,27 @@ describe('handleSlashCommand: dispatch', () => {
     expect(updated.rules.map(r => r.rule)).toEqual(['first', 'third'])
   })
 
+  it('/forget out of range reports no rule and removes nothing', () => {
+    addRule('m', 'only')
+    let captured: any = null
+    const setMessages = (u: any) => { captured = typeof u === 'function' ? u([]) : u }
+    const setProfile = spy<[ModelProfile]>()
+    handleSlashCommand('/forget 9', 'm', makeProfile(), setProfile, setMessages, spy())
+    expect(setProfile.calls.length).toBe(0)
+    expect(JSON.stringify(captured)).toContain('no rule #9')
+  })
+
+  it('/forget with trailing garbage is rejected, not coerced', () => {
+    addRule('m', 'first')
+    addRule('m', 'second')
+    let captured: any = null
+    const setMessages = (u: any) => { captured = typeof u === 'function' ? u([]) : u }
+    const setProfile = spy<[ModelProfile]>()
+    handleSlashCommand('/forget 2abc', 'm', makeProfile(), setProfile, setMessages, spy())
+    expect(setProfile.calls.length).toBe(0)
+    expect(JSON.stringify(captured)).toContain('usage')
+  })
+
   it('/rules with empty profile shows the no-rules message', () => {
     let captured: any = null
     const setMessages = (updater: any) => { captured = typeof updater === 'function' ? updater([]) : updater }

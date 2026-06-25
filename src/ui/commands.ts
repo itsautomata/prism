@@ -4,7 +4,7 @@
  */
 
 import type React from 'react'
-import { addRule, removeRule, setMaxTools, type ModelProfile } from '../learning/profile.js'
+import { addRule, removeRule, setMaxTools, loadProfile, type ModelProfile } from '../learning/profile.js'
 import { appendMemo, getProjectId } from '../memory/memo.js'
 import { listAgents, resolveAgent, AgentNotFoundError, AgentValidationError } from '../agents/registry.js'
 import { listSkills, loadSkill, SkillNotFoundError, SkillLoadError } from '../skills/loader.js'
@@ -109,13 +109,22 @@ export function handleSlashCommand(
       return true
 
     case '/forget': {
-      const idx = parseInt(args) - 1
-      if (isNaN(idx)) {
-        info('usage: /forget <number>')
+      const raw = args.trim()
+      const idx = parseInt(raw, 10) - 1
+      // reject non-integer args ("3abc" → parseInt 3 would delete the wrong rule)
+      if (!/^\d+$/.test(raw)) {
+        info('usage: /forget <number> (see /rules)')
       } else {
+        // bounds-check against disk truth (what removeRule operates on), not the
+        // passed profile which may be stale. a no-op means the index was invalid.
+        const before = loadProfile(model).rules.length
         const updated = removeRule(model, idx)
-        setProfile(updated)
-        info('rule removed.')
+        if (updated.rules.length === before) {
+          info(`no rule #${raw}. you have ${before} rule${before === 1 ? '' : 's'} (see /rules).`)
+        } else {
+          setProfile(updated)
+          info('rule removed.')
+        }
       }
       return true
     }
