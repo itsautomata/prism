@@ -22,6 +22,7 @@ import { webPolicy, strictPolicy } from '../policy.js'
 import {
   ForbiddenSchemeError,
   ForbiddenPortError,
+  ForbiddenIpError,
 } from '../errors.js'
 
 describe('safeFetch (pre-flight)', () => {
@@ -48,6 +49,16 @@ describe('safeFetch (pre-flight)', () => {
 
   it('strict policy rejects port 80', async () => {
     await expect(safeFetch('https://example.com:80/', strictPolicy)).rejects.toThrow(ForbiddenPortError)
+  })
+
+  it('refuses IP-literal hosts in private/loopback/link-local ranges', async () => {
+    // these never reach the pinning dnsLookup (node connects to IP literals
+    // directly), so they must be rejected by the explicit literal-IP check.
+    await expect(safeFetch('http://127.0.0.1/', webPolicy)).rejects.toThrow(ForbiddenIpError)
+    await expect(safeFetch('http://169.254.169.254/latest/meta-data/', webPolicy)).rejects.toThrow(ForbiddenIpError) // cloud metadata
+    await expect(safeFetch('http://10.0.0.1/', webPolicy)).rejects.toThrow(ForbiddenIpError)
+    await expect(safeFetch('http://192.168.1.1/', webPolicy)).rejects.toThrow(ForbiddenIpError)
+    await expect(safeFetch('http://[::1]/', webPolicy)).rejects.toThrow(ForbiddenIpError)
   })
 
   it('refusal carries the original URL on the error', async () => {

@@ -17,6 +17,7 @@
 
 import got, { type OptionsInit } from 'got'
 import { lookup as dnsLookup } from 'node:dns'
+import { isIP } from 'node:net'
 import { validateScheme, validatePort, validateIp } from './validate.js'
 import {
   BodyTooLargeError,
@@ -37,12 +38,24 @@ export interface SafeFetchResult {
 }
 
 export async function safeFetch(rawUrl: string, policy: FetchPolicy): Promise<SafeFetchResult> {
-  // step 1: parse & scheme. throws TypeError on invalid URLs (like garbage strings).
-  const parsed = new URL(rawUrl)
-  validateScheme(rawUrl, parsed.protocol, policy.allowedSchemes)
+  // steps 1+2 (scheme, port) plus the IP-literal check, applied to the entry
+  // URL and re-applied to every redirect target via the beforeRedirect hook.
+  // IP-literal hosts (127.0.0.1, [::1], 169.254.169.254) never reach the
+  // pinning dnsLookup — node connects to them directly — so they are validated
+  // here. hostnames are validated inside pinningLookup at resolution time.
+  const stripBrackets = (h: string) => (h.startsWith('[') && h.endsWith(']') ? h.slice(1, -1) : h)
+  const assertUrlAllowed = (urlStr: string): void => {
+    const u = new URL(urlStr)
+    validateScheme(urlStr, u.protocol, policy.allowedSchemes)
+    validatePort(urlStr, u.port, policy.allowedPorts)
+    const host = stripBrackets(u.hostname)
+    if (isIP(host) !== 0) {
+      validateIp(urlStr, host, policy.blockedIpRanges)
+    }
+  }
 
-  // step 2: port. URL.port is '' when default — that's fine, scheme already gated.
-  validatePort(rawUrl, parsed.port, policy.allowedPorts)
+  // step 1: parse & scheme & port & literal-IP. throws TypeError on garbage URLs.
+  assertUrlAllowed(rawUrl)
 
   // captures the address from the most recent lookup. on redirect, this is the
   // final hop's resolved IP — which is what callers care about.
@@ -91,6 +104,15 @@ export async function safeFetch(rawUrl: string, policy: FetchPolicy): Promise<Sa
       dnsLookup: pinningLookup,
       headers: { 'user-agent': policy.userAgent },
       throwHttpErrors: true,
+      hooks: {
+        // re-validate scheme, port, and any literal-IP target on every redirect
+        // hop. without this, a 302 to http://127.0.0.1:9/ or a forbidden port
+        // would be followed (got's internal redirect doesn't re-run these checks,
+        // and node skips the pinning lookup for IP literals).
+        beforeRedirect: [
+          (options) => { assertUrlAllowed(options.url!.toString()) },
+        ],
+      },
     })
   } catch (err) {
     // surface our typed validators verbatim — they're the SSRF / scheme / port refusals
