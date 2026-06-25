@@ -5,6 +5,7 @@
  */
 
 import type { ProviderBridge, Message } from '../types/index.js'
+import { safeKeepStart } from './pairing.js'
 
 /**
  * outcome of a summarize attempt. callers must handle both branches.
@@ -45,8 +46,11 @@ export async function summarizeOldTurns(
     return { ok: true, messages }
   }
 
-  const oldMessages = messages.slice(0, -keepRecent)
-  const recentMessages = messages.slice(-keepRecent)
+  // snap the cut to a turn boundary so the kept tail never opens with an
+  // orphaned tool_result (which the provider would reject).
+  const start = safeKeepStart(messages, keepRecent)
+  const oldMessages = messages.slice(0, start)
+  const recentMessages = messages.slice(start)
 
   // build the conversation text to summarize
   const conversationText = oldMessages.map(msg => {

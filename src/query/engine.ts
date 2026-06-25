@@ -115,6 +115,12 @@ export async function* query(options: QueryOptions): AsyncGenerator<QueryEvent> 
         if (result.ok) {
           messages.splice(0, messages.length, ...result.messages)
           compacted = true
+          // convergence: if the kept recent tail alone still exceeds the
+          // budget, summarizing again next turn won't help — snip it now so
+          // the loop doesn't re-summarize the same tail every turn.
+          if (countConversationTokens(messages) > capabilities.maxContextTokens * compactionThreshold) {
+            messages.splice(0, messages.length, ...snipOldTurns(messages))
+          }
         } else {
           // surface the degradation once; subsequent turns just snip silently.
           summarizeBlocked = true
@@ -369,8 +375,11 @@ function collectContentBlock(event: StreamEvent, content: ContentBlock[]): void 
       if (toolBlock) {
         try {
           toolBlock.input = JSON.parse(event.inputJson)
+          toolBlock.invalidArgs = false
         } catch {
-          // partial JSON, accumulate
+          // the provider sent complete-but-malformed argument text. flag it so
+          // the orchestrator refuses to run the tool with empty input.
+          if (event.inputJson.trim().length > 0) toolBlock.invalidArgs = true
         }
       }
       break

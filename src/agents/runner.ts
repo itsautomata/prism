@@ -146,7 +146,12 @@ export async function runAgent(agent: Agent, task: AgentTask): Promise<AgentResu
               (b): b is import('../types/index.js').ToolUseBlock => b.type === 'tool_use' && b.id === event.id
             )
             if (toolBlock) {
-              try { toolBlock.input = JSON.parse(event.inputJson) } catch {}
+              try {
+                toolBlock.input = JSON.parse(event.inputJson)
+                toolBlock.invalidArgs = false
+              } catch {
+                if (event.inputJson.trim().length > 0) toolBlock.invalidArgs = true
+              }
             }
             break
           }

@@ -236,7 +236,10 @@ export class OpenRouterProvider implements ProviderBridge {
     let inputTokens = 0
     let outputTokens = 0
     let cachedInputTokens = 0
-    const toolCalls: Map<number, { id: string; name: string; args: string }> = new Map()
+    // keyed by the stream's tool-call index when present; falls back to the
+    // call id, then 0. keying by id when no index is sent stops two distinct
+    // calls from a non-compliant provider collapsing into one bucket.
+    const toolCalls: Map<string | number, { id: string; name: string; args: string }> = new Map()
 
     yield { type: 'message_start', id: messageId }
 
@@ -272,20 +275,20 @@ export class OpenRouterProvider implements ProviderBridge {
         // tool calls (streamed incrementally)
         if (choice.delta.tool_calls) {
           for (const tc of choice.delta.tool_calls) {
-            const idx = tc.index ?? 0
+            const key = tc.index ?? tc.id ?? 0
 
-            if (!toolCalls.has(idx)) {
+            if (!toolCalls.has(key)) {
               // new tool call
               const id = tc.id || crypto.randomUUID()
               const name = tc.function?.name || ''
-              toolCalls.set(idx, { id, name, args: '' })
+              toolCalls.set(key, { id, name, args: '' })
               if (name) {
                 yield { type: 'tool_call_start', id, name }
               }
             }
 
             // accumulate arguments
-            const existing = toolCalls.get(idx)!
+            const existing = toolCalls.get(key)!
             if (tc.function?.name && !existing.name) {
               existing.name = tc.function.name
               yield { type: 'tool_call_start', id: existing.id, name: existing.name }
@@ -362,14 +365,18 @@ export class OpenRouterProvider implements ProviderBridge {
     if (choice.message.tool_calls) {
       for (const tc of choice.message.tool_calls) {
         let input: Record<string, unknown> = {}
+        let invalidArgs = false
         try {
-          input = JSON.parse(tc.function.arguments)
-        } catch {}
+          input = tc.function.arguments ? JSON.parse(tc.function.arguments) : {}
+        } catch {
+          invalidArgs = true
+        }
         content.push({
           type: 'tool_use',
-          id: tc.id,
+          id: tc.id || crypto.randomUUID(),
           name: tc.function.name,
           input,
+          ...(invalidArgs ? { invalidArgs: true } : {}),
         })
       }
     }
