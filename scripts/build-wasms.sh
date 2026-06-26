@@ -61,7 +61,7 @@ while IFS=$'\t' read -r NAME SOURCE REF SUBDIR; do
   echo "=== $NAME ($REF) ==="
   SRC_PATH="$SOURCES_DIR/$NAME"
 
-  # clone if missing; otherwise reuse (assume pinned, idempotent)
+  # clone if missing; otherwise refresh the existing clone to the pinned ref.
   if [ ! -d "$SRC_PATH/.git" ]; then
     if ! git clone --depth 1 --branch "$REF" "$SOURCE" "$SRC_PATH" 2>/dev/null; then
       # fall back to a full clone + checkout for refs that aren't tags/branches
@@ -74,6 +74,17 @@ while IFS=$'\t' read -r NAME SOURCE REF SUBDIR; do
         FAILED+=("$NAME: checkout '$REF' failed")
         continue
       fi
+    fi
+  else
+    # reuse: force the existing checkout to the pinned ref and wipe generated
+    # artifacts. without this, a manifest ref bump is silently ignored — the
+    # stale source dir is rebuilt as-is, so the wasm never matches the manifest.
+    if (cd "$SRC_PATH" && git fetch --depth 1 origin "$REF" 2>/dev/null && git checkout -f FETCH_HEAD 2>/dev/null) \
+       || (cd "$SRC_PATH" && git fetch origin 2>/dev/null && git checkout -f "$REF" 2>/dev/null); then
+      (cd "$SRC_PATH" && git clean -fdx >/dev/null 2>&1)
+    else
+      FAILED+=("$NAME: could not update existing clone to '$REF'")
+      continue
     fi
   fi
 
@@ -113,9 +124,12 @@ while IFS=$'\t' read -r NAME SOURCE REF SUBDIR; do
 
   # normalize to a stable filename: tree-sitter-<manifest-name>.wasm
   DEST="$BUILD_DIR/tree-sitter-$NAME.wasm"
-  mv "$WASM_FILE" "$DEST"
-  SUCCESS+=("$NAME")
-  echo "  ok → $DEST"
+  if mv "$WASM_FILE" "$DEST"; then
+    SUCCESS+=("$NAME")
+    echo "  ok → $DEST"
+  else
+    FAILED+=("$NAME: mv to $DEST failed")
+  fi
 done <<<"$ENTRIES"
 
 echo
