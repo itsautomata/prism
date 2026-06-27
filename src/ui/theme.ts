@@ -12,7 +12,7 @@ export const theme = {
   // text
   text: '#e0e0e0',          // default text
   textDim: '#888888',        // secondary text
-  textMuted: '#555555',      // very dim
+  textMuted: '#767676',      // tertiary text; mid-gray stays ~4.5:1 on dark or light bg
 
   // accents
   accent: '#00ddff',         // cyan for tool names
