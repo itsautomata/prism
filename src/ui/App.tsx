@@ -99,6 +99,18 @@ export function App({ provider: initProvider, model: initModel, tools: baseTools
   } | null>(null)
   const [abortController, setAbortController] = useState<AbortController | null>(null)
   const [inPlanMode, setInPlanMode] = useState(false)
+  // the system prompt reads plan mode from this ref, not the state. /exec-plan
+  // and /cancel-plan flip plan mode and trigger a turn in the same tick; state
+  // would still be stale, so the turn would build with the old plan prompt.
+  const planModeRef = useRef(false)
+  const setPlanMode = useCallback((v: boolean) => {
+    planModeRef.current = v
+    setInPlanMode(v)
+  }, [])
+  // a /cancel-plan leaves this note; the next real user turn prepends it as
+  // context so the model knows the plan was abandoned, without spinning up a
+  // turn of its own. consumed (cleared) the first time it rides along.
+  const pendingPlanNoteRef = useRef<string | null>(null)
   const [activeSkills, setActiveSkills] = useState<ReadonlySet<string>>(new Set())
   // tier-A repo map: computed once at session start, ambient in every system
   // prompt thereafter. failures (missing wasm dir, parse errors) leave the
@@ -177,7 +189,7 @@ export function App({ provider: initProvider, model: initModel, tools: baseTools
       profile,
       projectContext,
       memory,
-      inPlanMode,
+      inPlanMode: planModeRef.current,
       activeSkills,
       repoMap,
     })
@@ -321,7 +333,8 @@ export function App({ provider: initProvider, model: initModel, tools: baseTools
       const switchFn = (newModel: string) => switchModel(newModel, session, setProvider, setModel, setCaps, setDisplayMessages)
       const handled = handleSlashCommand(input, model, profile, setProfile, setDisplayMessages, exit, switchFn, {
         value: inPlanMode,
-        set: setInPlanMode,
+        set: setPlanMode,
+        note: (msg: string) => { pendingPlanNoteRef.current = msg },
       }, triggerSyntheticTurn, process.cwd(), {
         active: activeSkills,
         setActive: setActiveSkills,
@@ -336,7 +349,14 @@ export function App({ provider: initProvider, model: initModel, tools: baseTools
     submittingRef.current = true
     try {
       setDisplayMessages(prev => [...prev, { role: 'user', text: input }])
-      messages.push({ role: 'user', content: [{ type: 'text', text: input }] })
+      // a pending /cancel-plan note rides this turn as a leading context block
+      // (same user message, so no consecutive-user-message issue), then clears.
+      const note = pendingPlanNoteRef.current
+      pendingPlanNoteRef.current = null
+      const content = note
+        ? [{ type: 'text' as const, text: note }, { type: 'text' as const, text: input }]
+        : [{ type: 'text' as const, text: input }]
+      messages.push({ role: 'user', content })
       await runModelLoop()
     } finally {
       submittingRef.current = false

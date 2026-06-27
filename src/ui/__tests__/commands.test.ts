@@ -341,6 +341,19 @@ describe('handleSlashCommand: plan mode', () => {
     expect(JSON.stringify(captured)).toContain('abandoned')
   })
 
+  it('/cancel-plan leaves a context note and fires no synthetic turn', () => {
+    let value = true
+    const set = (v: boolean) => { value = v }
+    let noted: string | null = null
+    const note = (m: string) => { noted = m }
+    const trigger = vi.fn()
+    handleSlashCommand('/cancel-plan', 'm', makeProfile(), spy(), spy(), spy(), undefined,
+      { value, set, note }, trigger)
+    expect(value).toBe(false)
+    expect(trigger).not.toHaveBeenCalled()
+    expect(noted ?? '').toMatch(/abandoned|do not execute/i)
+  })
+
   it('/plan without planMode arg is a no-op (graceful)', () => {
     let captured: any = null
     const setMessages = (updater: any) => { captured = typeof updater === 'function' ? updater([]) : updater }

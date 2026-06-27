@@ -59,9 +59,9 @@ export type SwitchModelFn = (newModel: string) => Promise<void>
 
 /**
  * push a hidden user message into the conversation and invoke the model loop.
- * used by /exec-plan, /cancel-plan, and /agent to give the model an explicit
- * "what just happened" signal, since slash commands are not visible to it
- * otherwise. the host filters these messages from the UI (see INTERNAL_PREFIXES).
+ * used by /exec-plan and /agent to give the model an explicit "what just
+ * happened" signal, since slash commands are not visible to it otherwise. the
+ * host filters these messages from the UI (see INTERNAL_PREFIXES).
  */
 export type SlashTriggerFn = (hiddenMsg: string) => void
 
@@ -76,6 +76,7 @@ export function handleSlashCommand(
   planMode?: {
     value: boolean
     set: (v: boolean) => void
+    note?: (msg: string) => void
   },
   trigger?: SlashTriggerFn,
   cwd?: string,
@@ -217,7 +218,10 @@ export function handleSlashCommand(
       } else {
         planMode.set(false)
         info('plan mode: off. plan abandoned.')
-        trigger?.('[the plan was abandoned by the user. ask why and what they want to do next instead.]')
+        // no synthetic turn: cancelling hands control back rather than spinning
+        // up a turn that interrogates the user. leave a note so the next real
+        // message carries the context and the model does not re-run the dead plan.
+        planMode.note?.('[the plan above was abandoned by the user and is no longer in effect; do not execute it]')
       }
       return true
 
