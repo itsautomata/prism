@@ -8,7 +8,8 @@
  * - else hash the absolute cwd (fallback for non-git or local-only repos)
  */
 
-import { existsSync, readFileSync, writeFileSync, mkdirSync, copyFileSync } from 'fs'
+import { existsSync, readFileSync, mkdirSync, copyFileSync } from 'fs'
+import { atomicWriteFileSync } from '../util/atomic.js'
 import { join } from 'path'
 import { homedir } from 'os'
 import { createHash } from 'crypto'
@@ -91,7 +92,7 @@ export function loadMemo(id: string): string | null {
  */
 export function saveMemo(id: string, content: string): void {
   ensureDir(id)
-  writeFileSync(memoPath(id), content, 'utf-8')
+  atomicWriteFileSync(memoPath(id), content)
 }
 
 /**
@@ -108,7 +109,7 @@ export function appendMemo(id: string, fact: string): void {
 
   if (!existsSync(path)) {
     const initial = `# memo\n\n## notes\n${line}`
-    writeFileSync(path, initial, 'utf-8')
+    atomicWriteFileSync(path, initial)
     return
   }
 
@@ -116,11 +117,11 @@ export function appendMemo(id: string, fact: string): void {
   if (current.includes('## notes')) {
     // insert under the existing ## notes heading
     const updated = current.replace(/## notes\n/, `## notes\n${line}`)
-    writeFileSync(path, updated, 'utf-8')
+    atomicWriteFileSync(path, updated)
   } else {
     // append a new ## notes section at the end
     const updated = current.endsWith('\n') ? current : current + '\n'
-    writeFileSync(path, `${updated}\n## notes\n${line}`, 'utf-8')
+    atomicWriteFileSync(path, `${updated}\n## notes\n${line}`)
   }
 }
 

@@ -5,7 +5,8 @@
  * auto-saves after every turn.
  */
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync, readdirSync } from 'fs'
+import { existsSync, mkdirSync, readFileSync, readdirSync } from 'fs'
+import { atomicWriteFileSync } from '../util/atomic.js'
 import { join } from 'path'
 import { homedir } from 'os'
 import { randomBytes } from 'crypto'
@@ -55,7 +56,7 @@ export function saveSession(session: Session): void {
   ensureDir()
   session.updatedAt = new Date().toISOString()
   const path = sessionPath(session.id)
-  writeFileSync(path, JSON.stringify(session, null, 2), 'utf-8')
+  atomicWriteFileSync(path, JSON.stringify(session, null, 2))
 }
 
 /**
