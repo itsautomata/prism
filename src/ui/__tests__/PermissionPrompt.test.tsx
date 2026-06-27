@@ -45,17 +45,17 @@ describe('PermissionPrompt', () => {
     expect(onDecision).toHaveBeenCalledWith('deny')
   })
 
-  it('pressing enter calls onDecision with the selected option', () => {
+  it('enter defaults to deny: a reflexive enter must not approve', () => {
     const onDecision = vi.fn()
     const { stdin } = render(<PermissionPrompt toolName="BashTool" description="run: echo hello" onDecision={onDecision} />)
     stdin.write(KEY.enter)
-    expect(onDecision).toHaveBeenCalledWith('allow_once')
+    expect(onDecision).toHaveBeenCalledWith('deny')
   })
 
-  it('pressing down arrow changes selection, then enter uses new selection', () => {
+  it('arrow up moves off the deny default, then enter uses the new selection', () => {
     const onDecision = vi.fn()
     const { stdin } = render(<PermissionPrompt toolName="BashTool" description="run: echo hello" onDecision={onDecision} />)
-    stdin.write(KEY.down)
+    stdin.write(KEY.up) // deny (default, last) -> allow_session
     stdin.write(KEY.enter)
     expect(onDecision).toHaveBeenCalledWith('allow_session')
   })

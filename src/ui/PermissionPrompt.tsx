@@ -24,9 +24,13 @@ const OPTIONS: { key: string; value: PermissionChoice; label: string }[] = [
   { key: 'n', value: 'deny', label: 'no' },
 ]
 
+// the selection defaults to deny: a reflexive Enter must not approve a tool.
+// approval is explicit (press y or a, or arrow up to a yes then Enter).
+const DENY_INDEX = OPTIONS.findIndex(o => o.value === 'deny')
+
 export function PermissionPrompt({ toolName, description, onDecision }: PermissionPromptProps) {
-  const selectedRef = useRef(0)
-  const [selected, setSelected] = useState(0)
+  const selectedRef = useRef(DENY_INDEX)
+  const [selected, setSelected] = useState(DENY_INDEX)
   const resolverRef = useRef<((choice: PermissionChoice) => void) | null>(null)
 
   // forward the onDecision through a ref so useInput always calls the latest
