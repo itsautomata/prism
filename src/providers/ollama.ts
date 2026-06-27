@@ -181,18 +181,23 @@ export class OllamaProvider implements ProviderBridge {
 
         if (chunk.message?.tool_calls) {
           for (const tc of chunk.message.tool_calls) {
+            // a malformed streamed entry (absent or null function/name) would
+            // otherwise throw and abort the whole stream. skip it.
+            const name = tc.function?.name
+            if (!name) continue
+            const input = tc.function?.arguments ?? {}
             const id = crypto.randomUUID()
             toolCalls.push({
               type: 'tool_use',
               id,
-              name: tc.function.name,
-              input: tc.function.arguments,
+              name,
+              input,
             })
-            yield { type: 'tool_call_start', id, name: tc.function.name }
+            yield { type: 'tool_call_start', id, name }
             yield {
               type: 'tool_call_delta',
               id,
-              inputJson: JSON.stringify(tc.function.arguments),
+              inputJson: JSON.stringify(input),
             }
             yield { type: 'tool_call_end', id }
           }
