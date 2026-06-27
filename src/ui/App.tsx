@@ -89,6 +89,10 @@ export function App({ provider: initProvider, model: initModel, tools: baseTools
   // synchronous re-entrancy guard for submits. isLoading is async react state
   // and flips a tick late, leaving a window where two fast Enters both submit.
   const submittingRef = useRef(false)
+  // one model loop at a time. guards every entry to runModelLoop (typed submit,
+  // slash-triggered synthetic turn) so a re-entrant start cannot run two loops
+  // over the same messages. synchronous because isLoading flips a tick late.
+  const loopActiveRef = useRef(false)
   const [turnCount, setTurnCount] = useState(0)
   const [tokenInfo, setTokenInfo] = useState('')
   const [spinnerPhase, setSpinnerPhase] = useState<SpinnerPhase>('thinking')
@@ -209,6 +213,8 @@ export function App({ provider: initProvider, model: initModel, tools: baseTools
   // run the model loop on whatever's currently in `messages`. used by both
   // user-typed submissions and slash-command-triggered synthetic turns.
   const runModelLoop = useCallback(async () => {
+    if (loopActiveRef.current) return
+    loopActiveRef.current = true
     setTurnCount(prev => prev + 1)
     setIsLoading(true)
     setSpinnerPhase('thinking')
@@ -301,7 +307,7 @@ export function App({ provider: initProvider, model: initModel, tools: baseTools
     // saveSession is synchronous and can hold the thread for tens of ms on
     // long conversations. flip the UI back to "ready" first; defer the save
     // to the next tick so the render lands before the disk write.
-    setTimeout(() => { setAbortController(null); setIsLoading(false) }, 0)
+    setTimeout(() => { loopActiveRef.current = false; setAbortController(null); setIsLoading(false) }, 0)
     setTimeout(() => saveSession(session), 0)
   }, [provider, model, tools, messages, getSystemPrompt, session])
 
@@ -341,6 +347,10 @@ export function App({ provider: initProvider, model: initModel, tools: baseTools
       })
       if (handled) return
     }
+
+    // nothing to send: a stray Enter (e.g. the second of a double-Enter on a
+    // slash command, after the buffer cleared) must not start a turn.
+    if (!input.trim()) return
 
     // re-entrancy guard: two Enters in quick succession (key autorepeat, a
     // paste ending in \n\n) can both land here before isLoading deactivates the
