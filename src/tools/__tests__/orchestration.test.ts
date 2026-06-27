@@ -62,3 +62,37 @@ describe('runToolCalls: malformed-args guard', () => {
     expect(results[0].isError).toBeUndefined()
   })
 })
+
+describe('runToolCalls: concurrent batch completeness', () => {
+  it('returns a result for every call when more than MAX_CONCURRENCY run concurrently', async () => {
+    // a concurrency-safe tool: many of these in one turn form a single
+    // concurrent batch. every tool_use must get a tool_result, or the next
+    // request orphans the unmatched calls and the provider rejects it.
+    const probe = buildTool({
+      name: 'Probe',
+      description: 'concurrency-safe no-op',
+      inputSchema: z.object({}).passthrough(),
+      isConcurrencySafe: () => true,
+      isReadOnly: () => true,
+      checkPermissions: () => ({ behavior: 'allow' as const }),
+      async call() {
+        return { content: 'ran' }
+      },
+    })
+
+    const n = 25 // well past MAX_CONCURRENCY (10)
+    const blocks: ToolUseBlock[] = Array.from({ length: n }, (_, i) => ({
+      type: 'tool_use',
+      id: `c${i}`,
+      name: 'Probe',
+      input: {},
+    }))
+
+    const results = await collect(runToolCalls(blocks, [probe], { cwd: '/' }))
+
+    expect(results).toHaveLength(n)
+    expect(new Set(results.map(r => r.toolUseId))).toEqual(
+      new Set(blocks.map(b => b.id)),
+    )
+  })
+})

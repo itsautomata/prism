@@ -86,18 +86,22 @@ async function* runConcurrent(
   context: ToolContext,
   askPermission?: PermissionResolver,
 ): AsyncGenerator<ToolResultBlock> {
-  const limited = blocks.slice(0, MAX_CONCURRENCY)
-
-  const promises = limited.map(block => executeToolCall(block, tools, context, askPermission))
-  const results = await Promise.all(promises)
-
-  for (const result of results) {
-    yield {
-      type: 'tool_result',
-      toolUseId: result.toolUseId,
-      content: result.result.content,
-      isError: result.result.isError,
-      userDenied: result.result.userDenied,
+  // run in waves of MAX_CONCURRENCY. every emitted tool_use must yield a
+  // tool_result: a missing one orphans the call and the provider rejects the
+  // next request (tool_use without a matching tool_result).
+  for (let i = 0; i < blocks.length; i += MAX_CONCURRENCY) {
+    const wave = blocks.slice(i, i + MAX_CONCURRENCY)
+    const results = await Promise.all(
+      wave.map(block => executeToolCall(block, tools, context, askPermission)),
+    )
+    for (const result of results) {
+      yield {
+        type: 'tool_result',
+        toolUseId: result.toolUseId,
+        content: result.result.content,
+        isError: result.result.isError,
+        userDenied: result.result.userDenied,
+      }
     }
   }
 }
