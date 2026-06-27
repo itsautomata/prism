@@ -3,7 +3,7 @@
  * runs once on first prompt. pure read-only. no LLM. no side effects.
  */
 
-import { existsSync, readdirSync, readFileSync, statSync } from 'fs'
+import { existsSync, readdirSync, readFileSync, statSync, type Dirent } from 'fs'
 import { execSync } from 'child_process'
 import { join, basename, extname } from 'path'
 import { homedir } from 'os'
@@ -246,31 +246,15 @@ function detectEntryPoint(cwd: string, language: string | null): string | null {
 }
 
 function detectStructure(cwd: string): StructureInfo {
-  const filesByType: Record<string, number> = {}
-  const directories: string[] = []
   const configFiles: string[] = []
-  let totalFiles = 0
-
-  // check config files
   for (const cf of CONFIG_FILES) {
     if (existsSync(join(cwd, cf))) configFiles.push(cf)
   }
 
-  // scan top-level directories
-  try {
-    for (const entry of readdirSync(cwd)) {
-      const path = join(cwd, entry)
-      try {
-        const stat = statSync(path)
-        if (stat.isDirectory() && !entry.startsWith('.') && !IGNORE_DIRS.has(entry)) {
-          directories.push(entry)
-        }
-      } catch {}
-    }
-  } catch {}
-
-  // count files by type (max 2 levels deep)
-  countFiles(cwd, filesByType, 0, 2)
+  // one bounded walk yields both the top-level directory list and the
+  // file-type counts. the budget caps total work, so no cwd blocks startup.
+  const { filesByType, directories } = scanTree(cwd, 2, { remaining: SCAN_STAT_BUDGET })
+  let totalFiles = 0
   for (const count of Object.values(filesByType)) {
     totalFiles += count
   }
@@ -278,27 +262,71 @@ function detectStructure(cwd: string): StructureInfo {
   return { totalFiles, filesByType, directories, configFiles }
 }
 
-function countFiles(dir: string, counts: Record<string, number>, depth: number, maxDepth: number): void {
-  if (depth > maxDepth) return
+// cap on entries examined during the scan. bounds startup work so a cwd with
+// very many files cannot block the main thread, whatever its shape.
+const SCAN_STAT_BUDGET = 4000
 
-  try {
-    for (const entry of readdirSync(dir)) {
-      if (IGNORE_DIRS.has(entry) || entry.startsWith('.')) continue
+// number of entries a directory examines before yielding its turn, so the
+// budget rotates across siblings instead of being drained by the first one.
+const SCAN_DIR_STRIDE = 256
 
-      const path = join(dir, entry)
-      try {
-        const stat = statSync(path)
-        if (stat.isFile()) {
-          const ext = extname(entry)
-          if (ext) {
-            counts[ext] = (counts[ext] || 0) + 1
-          }
-        } else if (stat.isDirectory()) {
-          countFiles(path, counts, depth + 1, maxDepth)
+type ScanResult = { filesByType: Record<string, number>; directories: string[] }
+
+// round-robin walk bounded by a shared budget. directory-ness comes from the
+// readdir result (withFileTypes), so the common case costs no per-entry stat.
+// symlinked dirs are listed but not descended, so the walk cannot cycle or
+// escape the project tree. the budget caps total work, so no cwd blocks startup.
+function scanTree(root: string, maxDepth: number, budget: { remaining: number }): ScanResult {
+  const filesByType: Record<string, number> = {}
+  const directories: string[] = []
+
+  type Frame = { dir: string; depth: number; entries: Dirent[]; idx: number }
+  const queue: Frame[] = []
+  const enqueue = (dir: string, depth: number): void => {
+    try { queue.push({ dir, depth, entries: readdirSync(dir, { withFileTypes: true }), idx: 0 }) } catch {}
+  }
+  enqueue(root, 0)
+
+  while (queue.length > 0 && budget.remaining > 0) {
+    const frame = queue.shift()!
+    let taken = 0
+
+    while (frame.idx < frame.entries.length && taken < SCAN_DIR_STRIDE && budget.remaining > 0) {
+      const ent = frame.entries[frame.idx++]!
+      const name = ent.name
+      if (IGNORE_DIRS.has(name) || name.startsWith('.')) continue
+
+      taken++
+      budget.remaining--
+
+      const isLink = ent.isSymbolicLink()
+      let isDir = ent.isDirectory()
+      let isFile = ent.isFile()
+      if (isLink) {
+        try {
+          const s = statSync(join(frame.dir, name))
+          isDir = s.isDirectory()
+          isFile = s.isFile()
+        } catch { continue }
+      }
+
+      if (isDir) {
+        if (frame.depth === 0) directories.push(name)
+        // descend into real directories only; a symlinked dir is listed but
+        // not walked, so the scan cannot cycle or escape the project tree.
+        if (!isLink && frame.depth < maxDepth) enqueue(join(frame.dir, name), frame.depth + 1)
+      } else if (isFile) {
+        const ext = extname(name)
+        if (ext) {
+          filesByType[ext] = (filesByType[ext] || 0) + 1
         }
-      } catch {}
+      }
     }
-  } catch {}
+
+    if (frame.idx < frame.entries.length) queue.push(frame)
+  }
+
+  return { filesByType, directories }
 }
 
 function detectGit(cwd: string): GitInfo | null {
