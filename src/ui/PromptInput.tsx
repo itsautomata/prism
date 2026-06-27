@@ -89,9 +89,14 @@ export const PromptInput = memo(function PromptInput({ onSubmit, isLoading, inPl
   const scheduleDisplayUpdate = useCallback(() => {
     if (timerRef.current) return
     timerRef.current = setTimeout(() => {
-      setDisplayBuf(bufferRef.current)
-      setCursorPos(cursorRef.current)
-      timerRef.current = null
+      // release the timer even if the flush throws: otherwise one render error
+      // sticks the gate and every later keystroke skips its flush (frozen display).
+      try {
+        setDisplayBuf(bufferRef.current)
+        setCursorPos(cursorRef.current)
+      } finally {
+        timerRef.current = null
+      }
     }, 16)
   }, [])
 
@@ -281,11 +286,12 @@ export const PromptInput = memo(function PromptInput({ onSubmit, isLoading, inPl
       return
     }
     if (escapeTimerRef.current && !key.escape) {
+      // a non-return key followed the escape: not a modified-enter chord. cancel
+      // the window and process the key normally, never wiping the buffer (a stray
+      // or split escape sequence must not be able to destroy typed input).
       clearTimeout(escapeTimerRef.current)
       escapeTimerRef.current = null
-      clearBufferNow()
-      // fall through: the current input (whatever it was) still needs to
-      // be processed against the now-empty buffer
+      // fall through: process the current key against the unchanged buffer
     }
 
     // hint navigation: only when hints are showing
@@ -404,13 +410,13 @@ export const PromptInput = memo(function PromptInput({ onSubmit, isLoading, inPl
       return
     }
 
-    // escape arriving on its own: schedule the clear so a follow-up return
-    // (the second half of split-event modified-enter) can re-purpose it as a
-    // newline insertion. if the timer expires without a chord, clear fires.
+    // escape on its own: open a short window so a follow-up return (split-event
+    // modified-enter) becomes a newline. on expiry it does nothing. a lone escape
+    // must never clear the buffer (ctrl+u clears; a split key sequence can phantom
+    // an escape, which used to wipe all typed input).
     if (key.escape) {
       if (escapeTimerRef.current) clearTimeout(escapeTimerRef.current)
       escapeTimerRef.current = setTimeout(() => {
-        clearBufferNow()
         escapeTimerRef.current = null
       }, 50)
       return

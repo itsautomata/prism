@@ -349,18 +349,31 @@ describe('PromptInput: multi-line input', () => {
     expect(onSubmit).toHaveBeenCalledWith('keep me\nnext')
   })
 
-  it('plain escape still clears the buffer (deferred but eventually fires)', async () => {
+  it('a lone escape does NOT clear the buffer (stray/split escapes must not destroy input)', async () => {
     const { stdin } = render(<PromptInput onSubmit={onSubmit} isLoading={false} />)
-    stdin.write('drop this')
+    stdin.write('keep this')
     await tick()
-    stdin.write('\x1b')
-    // wait past the 50ms deferral window
-    await tick(100)
-    stdin.write('replacement')
+    stdin.write('\x1b')        // a lone escape (used to wipe the buffer, now a no-op)
+    await tick(100)            // past the 50ms modified-enter window
+    stdin.write(' and more')
     await tick()
     stdin.write('\r')
     await tick()
-    expect(onSubmit).toHaveBeenCalledWith('replacement')
+    expect(onSubmit).toHaveBeenCalledWith('keep this and more')
+  })
+
+  it('a key after a lone escape is processed normally, not as a clear', async () => {
+    const { stdin } = render(<PromptInput onSubmit={onSubmit} isLoading={false} />)
+    stdin.write('hello')
+    await tick()
+    stdin.write('\x1b')        // escape arrives alone (arms the window)
+    await tick(10)             // separate event, inside the 50ms window
+    stdin.write('x')           // a normal key follows (used to clear, now just inserts)
+    await tick()
+    stdin.write('\r')
+    await tick()
+    // the buffer survives; 'x' is appended (a split escape sequence can no longer wipe input)
+    expect(onSubmit).toHaveBeenCalledWith('hellox')
   })
 
   it('up arrow on a multi-line buffer moves cursor up a line, preserving column', async () => {
