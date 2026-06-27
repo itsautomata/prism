@@ -1,7 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { render } from 'ink-testing-library'
-import { PromptInput } from '../PromptInput.js'
+import { PromptInput, renderSegments } from '../PromptInput.js'
 import { PHRASES } from '../spinnerPhrases.js'
+import type { Segment } from '../inputBuffer.js'
 
 // the input throttles non-backspace keystrokes through a 16ms timer.
 // we wait a beat between writes to let the display refresh.
@@ -495,5 +496,18 @@ describe('PromptInput: thinking indicator', () => {
     await tick()
     expect(lastFrame()).not.toContain('should not appear')
     expect(lastFrame()).not.toContain('esc to interrupt')
+  })
+})
+
+describe('renderSegments: multi-byte', () => {
+  it('keeps an astral char (emoji) whole when the cursor splits the segment', () => {
+    const segs: Segment[] = [{ kind: 'text', chars: '😀x' }]
+    // cursor at atom 1: just past the emoji. UTF-16 slicing here would split
+    // the surrogate pair; the text before the cursor must be the whole emoji.
+    const nodes = renderSegments(segs, 1)
+    const before = nodes.find(n =>
+      String((n as { key?: unknown }).key ?? '').includes('pre'),
+    ) as { props: { children: string } } | undefined
+    expect(before?.props.children).toBe('😀')
   })
 })

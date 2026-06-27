@@ -22,6 +22,8 @@ import {
   totalLines,
   flatToLineCol,
   sliceToLines,
+  clen,
+  cslice,
   type Buffer as InputBuffer,
   type PasteStore,
   type Segment,
@@ -584,18 +586,20 @@ export const PromptInput = memo(function PromptInput({ onSubmit, isLoading, inPl
  * (in flat-atom coordinates) inverted. text segments are split around the
  * cursor; pills render as a single inverted unit when the cursor sits on them.
  */
-function renderSegments(segs: Segment[], cursor: number): React.ReactNode[] {
+export function renderSegments(segs: Segment[], cursor: number): React.ReactNode[] {
   const nodes: React.ReactNode[] = []
   let pos = 0
   for (let i = 0; i < segs.length; i++) {
     const seg = segs[i]!
     if (seg.kind === 'text') {
-      const len = seg.chars.length
+      // code-point lengths and slices: the cursor counts atoms (code points),
+      // so UTF-16 indexing would split an astral char (emoji) into surrogates.
+      const len = clen(seg.chars)
       if (cursor >= pos && cursor < pos + len) {
         const off = cursor - pos
-        const before = seg.chars.slice(0, off)
-        const ch = seg.chars[off] ?? ' '
-        const after = seg.chars.slice(off + 1)
+        const before = cslice(seg.chars, 0, off)
+        const ch = cslice(seg.chars, off, off + 1) || ' '
+        const after = cslice(seg.chars, off + 1)
         if (before) nodes.push(<Text key={`t-${i}-pre`}>{before}</Text>)
         if (ch === '\n') {
           // cursor on a newline: show an inverted-space marker so the cursor

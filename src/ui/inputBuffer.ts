@@ -11,8 +11,8 @@ import { randomUUID } from 'crypto'
 // single atom. slicing or indexing by code unit would split a pair into lone
 // surrogates that corrupt the buffer and get submitted to the model.
 const cp = (s: string): string[] => Array.from(s)
-const clen = (s: string): number => cp(s).length
-const cslice = (s: string, a?: number, b?: number): string => cp(s).slice(a, b).join('')
+export const clen = (s: string): number => cp(s).length
+export const cslice = (s: string, a?: number, b?: number): string => cp(s).slice(a, b).join('')
 
 export interface TextSegment {
   kind: 'text'
