@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterAll, vi } from 'vitest'
-import { mkdtempSync, rmSync, existsSync, readFileSync, writeFileSync } from 'fs'
+import { rmSync, existsSync, readFileSync } from 'fs'
 import { join } from 'path'
 
 // redirect homedir() so the memo store doesn't touch the real ~/.prism
@@ -132,6 +132,22 @@ describe('appendMemo', () => {
     appendMemo('trim-id', '   spaced   ')
     const content = loadMemo('trim-id')!
     expect(content).toMatch(/\] spaced$/m)
+  })
+
+  it('inserts the fact even when the memo uses CRLF line endings', () => {
+    saveMemo('crlf-id', '# memo\r\n\r\n## notes\r\n- [2026-06-27] old\r\n')
+    appendMemo('crlf-id', 'new fact')
+    const content = loadMemo('crlf-id')!
+    expect(content).toContain('new fact') // silently dropped before the \r?\n? fix
+    expect(content).toContain('old')
+  })
+
+  it('inserts the fact when ## notes has no trailing newline', () => {
+    saveMemo('nonl-id', '# memo\n\n## notes')
+    appendMemo('nonl-id', 'new fact')
+    const content = loadMemo('nonl-id')!
+    expect(content).toContain('new fact')
+    expect(content).toContain('## notes')
   })
 })
 

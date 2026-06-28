@@ -115,8 +115,10 @@ export function appendMemo(id: string, fact: string): void {
 
   const current = readFileSync(path, 'utf-8')
   if (current.includes('## notes')) {
-    // insert under the existing ## notes heading
-    const updated = current.replace(/## notes\n/, `## notes\n${line}`)
+    // insert under the existing ## notes heading. tolerate CRLF and a missing
+    // trailing newline (\r?\n?): the optional line-ending still matches when
+    // "## notes" is present, so the fact is never silently dropped.
+    const updated = current.replace(/## notes\r?\n?/, `## notes\n${line}`)
     atomicWriteFileSync(path, updated)
   } else {
     // append a new ## notes section at the end
