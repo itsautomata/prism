@@ -89,6 +89,13 @@ describe('resolveAgent', () => {
     expect(() => resolveAgent('does-not-exist', projectRoot)).toThrow(AgentNotFoundError)
   })
 
+  it('rejects a path-traversing name instead of reading outside the agents dirs', () => {
+    // a valid agent file planted one level above the agents dir; "../evil"
+    // would resolve to <projectRoot>/evil.md without confinement.
+    writeFileSync(join(projectRoot, 'evil.md'), fullAgentBody(), 'utf-8')
+    expect(() => resolveAgent('../evil', projectRoot)).toThrow(AgentNotFoundError)
+  })
+
   it('finds a project-scoped agent', () => {
     writeProjectAgent('security-auditor', fullAgentBody())
     const agent = resolveAgent('security-auditor', projectRoot)

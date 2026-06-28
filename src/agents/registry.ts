@@ -52,6 +52,7 @@ export function resolveAgent(name: string | undefined, cwd: string): Agent {
   if (!name) return DEFAULT_AGENT
   if (name === DEFAULT_AGENT.name) return DEFAULT_AGENT
   if (name === RECOVERY_AGENT.name) return RECOVERY_AGENT
+  if (name !== basename(name)) throw new AgentNotFoundError(name)
 
   const project = join(projectAgentsDir(cwd), `${name}.md`)
   if (existsSync(project)) return loadDefinition(project)
