@@ -10,7 +10,6 @@ import { atomicWriteFileSync } from '../util/atomic.js'
 import { join } from 'path'
 import { homedir } from 'os'
 import { randomBytes } from 'crypto'
-import type { Message } from '../types/index.js'
 import type { Session } from './types.js'
 
 const SESSIONS_DIR = join(homedir(), '.prism', 'sessions')
