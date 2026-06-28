@@ -14,6 +14,7 @@
 
 import React from 'react'
 import { render } from 'ink'
+import { wrapStdinForKeypad } from './ui/keypadStdin.js'
 import { App } from './ui/App.js'
 import { OllamaProvider } from './providers/ollama.js'
 import { OpenRouterProvider } from './providers/openrouter.js'
@@ -378,7 +379,7 @@ async function main() {
     process.on('SIGTERM', () => { popKeyboardMode(); process.exit(143) })
   }
 
-  const { waitUntilExit } = render(
+  const instance = render(
     React.createElement(App, {
       provider,
       model,
@@ -389,10 +390,16 @@ async function main() {
       projectContext,
       memory,
       repoMapOverride: { maxFiles, maxLines, skip: skipRepoMap },
-    })
+      // reset ink's frame cache after a raw screen wipe (/clear, resize) so the
+      // next render is a full redraw rather than a diff against stale state.
+      inkClear: () => instance.clear(),
+    }),
+    // kitty keyboard mode (pushed above) reports numpad keys as CSI-u codes
+    // that ink drops; translate them to digits before ink's parser sees them.
+    { stdin: wrapStdinForKeypad(process.stdin) }
   )
 
-  await waitUntilExit()
+  await instance.waitUntilExit()
 }
 
 main().catch(console.error)
