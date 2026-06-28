@@ -21,13 +21,13 @@ export function formatMemory(m: Memory): string | null {
 
   if (m.lens) {
     sections.push('')
-    sections.push('## lens.md (user-enforced rules)')
+    sections.push('## lens.md (user-enforced rules — full content below, do not re-read)')
     sections.push(m.lens)
   }
 
   if (m.memo) {
     sections.push('')
-    sections.push('## memo (learned across sessions)')
+    sections.push('## memo (learned across sessions — full content below, do not re-read)')
     sections.push(m.memo)
   }
 
