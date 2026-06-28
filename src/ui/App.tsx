@@ -289,6 +289,8 @@ export function App({ provider: initProvider, model: initModel, tools: baseTools
       for await (const event of query({
         provider, model, systemPrompt: getSystemPrompt(), tools, messages,
         maxTurns: 50, askPermission, signal: controller.signal,
+        // only enforce verify-before-done when the project has a test suite.
+        enforceVerify: projectContext.testing.hasTests,
       })) {
         switch (event.type) {
           case 'text':

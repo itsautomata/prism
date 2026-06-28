@@ -27,6 +27,24 @@ import { snipOldTurns } from '../compact/snip.js'
 import { summarizeOldTurns } from '../compact/summarize.js'
 import { loadConfig } from '../config/config.js'
 
+// tools that can change files in the workspace. paired with isReadOnly — which
+// already encodes per-command bash safety and deny-writes subagents — this tells
+// the verify-nudge whether a turn actually edited code, so edits via Bash
+// (sed -i, redirects) or a write-capable subagent count too, not just Edit/Write.
+// Verify is handled separately (it clears the flag); Skill is non-readonly for
+// permission reasons but does not itself touch files, so it is left out.
+const WORKSPACE_MUTATORS = new Set(['Edit', 'Write', 'Bash', 'Agent'])
+
+// how many times the loop will force a code-editing turn back to Verify before
+// letting it finish. one reminder, then the model's call stands — the cap is
+// what keeps this from looping when the model declines (e.g. a trivial edit).
+const VERIFY_NUDGE_CAP = 1
+
+const VERIFY_NUDGE =
+  'you changed code but have not run a passing Verify since. run Verify with ' +
+  "the project's test command and fix any failures before reporting done. if " +
+  'the edit is trivial (comment / typo / doc-only), say so in one line and stop.'
+
 export type QueryEvent =
   | { type: 'text'; text: string }
   | { type: 'token_update'; used: number; max: number; formatted: string }
@@ -45,6 +63,12 @@ export interface QueryOptions {
   maxTurns?: number
   signal?: AbortSignal
   askPermission?: PermissionResolver
+  /**
+   * when true, the loop refuses to finish a turn that edited code without a
+   * passing Verify since. set from `projectContext.testing.hasTests` — only
+   * projects with a test suite get the enforcement. see the verify-nudge below.
+   */
+  enforceVerify?: boolean
 }
 
 /**
@@ -62,6 +86,7 @@ export async function* query(options: QueryOptions): AsyncGenerator<QueryEvent> 
     maxTurns = 50,
     signal,
     askPermission,
+    enforceVerify = false,
   } = options
 
   const capabilities = provider.getCapabilities()
@@ -84,6 +109,10 @@ export async function* query(options: QueryOptions): AsyncGenerator<QueryEvent> 
   let turnCount = 0
   let consecutiveErrors = 0
   let consecutiveEmptyTurns = 0
+  // verify enforcement: true once a turn edits code, cleared by a passing
+  // Verify. checked at the done-exit to force one corrective turn.
+  let unverifiedEdits = false
+  let verifyNudges = 0
   // session-sticky: once summarize fails, stop retrying it. fall back to snip
   // for the remainder of the session. avoids burning N model calls on the
   // same compaction failure when the user has already crossed the threshold.
@@ -219,6 +248,18 @@ export async function* query(options: QueryOptions): AsyncGenerator<QueryEvent> 
 
     // no tool calls → done
     if (toolUseBlocks.length === 0 || stopReason !== 'tool_use') {
+      // verify-nudge: the model is about to finish, but it edited code without a
+      // passing Verify since. force one corrective turn (the model can justify a
+      // trivial edit and stop). the cap prevents looping if it declines.
+      if (enforceVerify && unverifiedEdits && verifyNudges < VERIFY_NUDGE_CAP) {
+        verifyNudges++
+        messages.push({
+          role: 'user',
+          content: [{ type: 'text', text: VERIFY_NUDGE }],
+        })
+        turnCount++
+        continue
+      }
       yield { type: 'done', reason: 'completed', turnCount }
       return
     }
@@ -246,6 +287,23 @@ export async function* query(options: QueryOptions): AsyncGenerator<QueryEvent> 
       messages.push({ role: 'user', content: toolResults })
       yield { type: 'done', reason: 'user_denied', turnCount }
       return
+    }
+
+    // verify enforcement bookkeeping: a successful workspace edit raises the
+    // flag, a passing Verify clears it. errored calls count neither way — a
+    // failed edit changed nothing, a failed Verify confirmed nothing. an edit is
+    // any non-readonly call to a workspace-mutating tool (so mutating Bash and
+    // write-capable subagents count, while reads, Skill and Verify do not).
+    for (const result of toolResults) {
+      if (result.isError) continue
+      const block = toolUseBlocks.find(b => b.id === result.toolUseId)
+      if (!block) continue
+      if (block.name === 'Verify') {
+        unverifiedEdits = false
+      } else if (WORKSPACE_MUTATORS.has(block.name)) {
+        const tool = findTool(tools, block.name)
+        if (tool && !tool.isReadOnly(block.input)) unverifiedEdits = true
+      }
     }
 
     // append tool results as user message
