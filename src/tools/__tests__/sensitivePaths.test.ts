@@ -6,6 +6,8 @@ import { classifyRead } from '../sensitivePaths.js'
 import { ReadTool } from '../read.js'
 import { GrepTool } from '../grep.js'
 import { BashTool } from '../bash.js'
+import { WriteTool } from '../write.js'
+import { EditTool } from '../edit.js'
 
 describe('classifyRead', () => {
   it('allows reads inside the project tree', () => {
@@ -55,7 +57,48 @@ describe('classifyRead: symlink escape', () => {
     const link = join(proj, 'innocent.txt')
     symlinkSync(secret, link) // ./innocent.txt -> ../secret.txt
     // lexically the link is inside proj; resolved, it escapes — must ask
-    expect(classifyRead(link, proj).allow).toBe(false)
+    const c = classifyRead(link, proj)
+    expect(c.allow).toBe(false)
+    // and the resolved field names the real target, not the in-project alias
+    expect(c.resolved).toContain('secret.txt')
+  })
+})
+
+describe('Write/Edit checkPermissions: the prompt names the resolved target', () => {
+  let root: string
+  beforeEach(() => { root = mkdtempSync(join(tmpdir(), 'prism-we-')) })
+  afterEach(() => { rmSync(root, { recursive: true, force: true }) })
+
+  function plantSymlinkProject() {
+    const proj = join(root, 'proj')
+    mkdirSync(proj)
+    const secret = join(root, 'secret.txt')
+    writeFileSync(secret, 'x')
+    const link = join(proj, 'config.json')
+    symlinkSync(secret, link) // in-project alias pointing outside
+    return { proj, link }
+  }
+
+  it('Write flags a symlink that escapes and names the real target', () => {
+    const { proj, link } = plantSymlinkProject()
+    const perm = WriteTool.checkPermissions({ file_path: link, content: 'y' }, { cwd: proj })
+    expect(perm.behavior).toBe('ask')
+    expect(perm.behavior === 'ask' && perm.message).toContain('OUTSIDE')
+    expect(perm.behavior === 'ask' && perm.message).toContain('secret.txt')
+  })
+
+  it('Edit flags the same escape', () => {
+    const { proj, link } = plantSymlinkProject()
+    const perm = EditTool.checkPermissions({ file_path: link, old_string: 'a', new_string: 'b' }, { cwd: proj })
+    expect(perm.behavior).toBe('ask')
+    expect(perm.behavior === 'ask' && perm.message).toContain('OUTSIDE')
+  })
+
+  it('a normal in-project write keeps the plain message', () => {
+    const proj = join(root, 'proj')
+    mkdirSync(proj)
+    const perm = WriteTool.checkPermissions({ file_path: 'src/x.ts', content: 'y' }, { cwd: proj })
+    expect(perm.behavior === 'ask' && perm.message).toBe('write to src/x.ts')
   })
 })
 

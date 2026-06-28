@@ -8,6 +8,7 @@ import { z } from 'zod'
 import { readFile, writeFile } from 'fs/promises'
 import { buildTool, type ToolResult, type ToolContext } from './Tool.js'
 import { resolve, isAbsolute } from 'path'
+import { classifyRead, writeAskMessage } from './sensitivePaths.js'
 
 const inputSchema = z.object({
   file_path: z.string().describe('absolute path to the file to edit'),
@@ -76,7 +77,13 @@ export const EditTool = buildTool<EditInput>({
     }
   },
 
-  checkPermissions(input: EditInput) {
-    return { behavior: 'ask' as const, message: `edit ${input.file_path}` }
+  // resolve symlinks before prompting so the approval names the real target:
+  // an in-project path can be a symlink to a secret or an out-of-project file.
+  checkPermissions(input: EditInput, context: ToolContext) {
+    const c = classifyRead(input.file_path, context.cwd)
+    if (c.reason === 'in-project') {
+      return { behavior: 'ask' as const, message: `edit ${input.file_path}` }
+    }
+    return { behavior: 'ask' as const, message: writeAskMessage(c.resolved, c.reason) }
   },
 })

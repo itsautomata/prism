@@ -8,6 +8,7 @@ import { z } from 'zod'
 import { writeFileSync, mkdirSync, existsSync } from 'fs'
 import { buildTool, type ToolResult, type ToolContext } from './Tool.js'
 import { resolve, isAbsolute, dirname } from 'path'
+import { classifyRead, writeAskMessage } from './sensitivePaths.js'
 
 const inputSchema = z.object({
   file_path: z.string().describe('absolute path to the file to write'),
@@ -46,7 +47,13 @@ export const WriteTool = buildTool<WriteInput>({
     }
   },
 
-  checkPermissions(input: WriteInput) {
-    return { behavior: 'ask' as const, message: `write to ${input.file_path}` }
+  // resolve symlinks before prompting so the approval names the real target:
+  // a path inside the project can be a symlink to ~/.ssh or another secret.
+  checkPermissions(input: WriteInput, context: ToolContext) {
+    const c = classifyRead(input.file_path, context.cwd)
+    if (c.reason === 'in-project') {
+      return { behavior: 'ask' as const, message: `write to ${input.file_path}` }
+    }
+    return { behavior: 'ask' as const, message: writeAskMessage(c.resolved, c.reason) }
   },
 })
