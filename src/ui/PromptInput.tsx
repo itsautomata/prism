@@ -570,7 +570,7 @@ export const PromptInput = memo(function PromptInput({ onSubmit, isLoading, inPl
           <Text color={accent}>{promptChar} </Text>
           {renderSegments(renderSegs, renderCursor)}
           {cursorOnEnd && <Text inverse> </Text>}
-          {bufferEmpty && <Text color={theme.textMuted}>ask anything...   <Text dimColor>(shift+enter for newline)</Text></Text>}
+          {bufferEmpty && <Text color={theme.textMuted}>ask anything...   <Text dimColor>/ for commands · shift+enter for newline</Text></Text>}
         </Text>
       </Box>
       {hiddenBelow > 0 && (
