@@ -158,11 +158,27 @@ describe('loadSession', () => {
     expect(loadSession('corrupt')).toBeNull()
   })
 
-  it('returns the parsed object even if fields are missing (no validation)', () => {
+  it('returns null for a structurally invalid session (missing fields)', () => {
     mkdirSync(SESSIONS_DIR, { recursive: true })
     writeFileSync(join(SESSIONS_DIR, 'partial.json'), '{}', 'utf-8')
-    const result = loadSession('partial')
-    expect(result).not.toBeNull()
+    expect(loadSession('partial')).toBeNull()
+  })
+
+  it('returns null when messages is not an array (the resume-crash trigger)', () => {
+    mkdirSync(SESSIONS_DIR, { recursive: true })
+    const bad = { id: 'nomsgs', model: 'm', provider: 'p', cwd: '/x', createdAt: 'now', updatedAt: 'now' }
+    writeFileSync(join(SESSIONS_DIR, 'nomsgs.json'), JSON.stringify(bad), 'utf-8')
+    expect(loadSession('nomsgs')).toBeNull()
+  })
+
+  it('list/find skip a structurally invalid session file', () => {
+    mkdirSync(SESSIONS_DIR, { recursive: true })
+    const valid = createSession('m', 'p', '/x')
+    saveSession(valid)
+    writeFileSync(join(SESSIONS_DIR, 'junk.json'), '{"id":"junk"}', 'utf-8')
+    const ids = listSessions().map(s => s.id)
+    expect(ids).toContain(valid.id)
+    expect(ids).not.toContain('junk')
   })
 
   it('loads sessions written with the legacy long id format', () => {

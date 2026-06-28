@@ -60,6 +60,21 @@ export function saveSession(session: Session): void {
 }
 
 /**
+ * a parsed session must carry the fields the app reads, or it is treated as
+ * corrupt (a partial write, a hand edit, a legacy file). callers then take the
+ * clean "no session" path instead of crashing later on session.messages.filter.
+ */
+function isValidSession(data: unknown): data is Session {
+  if (!data || typeof data !== 'object') return false
+  const s = data as Record<string, unknown>
+  return typeof s.id === 'string'
+    && typeof s.model === 'string'
+    && typeof s.provider === 'string'
+    && typeof s.cwd === 'string'
+    && Array.isArray(s.messages)
+}
+
+/**
  * load a session by ID.
  */
 export function loadSession(id: string): Session | null {
@@ -67,7 +82,8 @@ export function loadSession(id: string): Session | null {
   if (!existsSync(path)) return null
 
   try {
-    return JSON.parse(readFileSync(path, 'utf-8'))
+    const data = JSON.parse(readFileSync(path, 'utf-8'))
+    return isValidSession(data) ? data : null
   } catch {
     return null
   }
@@ -87,7 +103,8 @@ function loadAllSorted(): Session[] {
 
   for (const file of files) {
     try {
-      sessions.push(JSON.parse(readFileSync(join(SESSIONS_DIR, file), 'utf-8')))
+      const data = JSON.parse(readFileSync(join(SESSIONS_DIR, file), 'utf-8'))
+      if (isValidSession(data)) sessions.push(data)
     } catch {
       continue
     }
