@@ -115,6 +115,7 @@ export function App({ provider: initProvider, model: initModel, tools: baseTools
   // context so the model knows the plan was abandoned, without spinning up a
   // turn of its own. consumed (cleared) the first time it rides along.
   const pendingPlanNoteRef = useRef<string | null>(null)
+  const clearArmedRef = useRef(false)
   const [activeSkills, setActiveSkills] = useState<ReadonlySet<string>>(new Set())
   // tier-A repo map: computed once at session start, ambient in every system
   // prompt thereafter. failures (missing wasm dir, parse errors) leave the
@@ -126,6 +127,27 @@ export function App({ provider: initProvider, model: initModel, tools: baseTools
   // caller that hasn't been updated yet.
   const [projectContext] = useState(() => initProjectContext ?? scanProject(process.cwd()))
   const [messages] = useState<Message[]>(() => initialMessages ? [...initialMessages] : [])
+
+  // /clear is destructive: it wipes the model history and overwrites the saved
+  // session. arm it on the first call; only an immediately-repeated /clear wipes.
+  const clearConversation = useCallback(() => {
+    if (!clearArmedRef.current) {
+      clearArmedRef.current = true
+      setDisplayMessages(prev => [...prev, {
+        role: 'tool_result',
+        text: 'clear the conversation? this wipes all context and cannot be undone. run /clear again to confirm, or type anything else to cancel.',
+        isError: false,
+      }])
+      return
+    }
+    clearArmedRef.current = false
+    messages.length = 0
+    session.messages = messages
+    setDisplayMessages([])
+    setTokenInfo('')
+    setTurnCount(0)
+    saveSession(session)
+  }, [messages, session])
 
   // Agent tool is built once with the initial runtime context bound in closure.
   // its onProgress callback reaches into setDisplayMessages so subagent events
@@ -331,6 +353,11 @@ export function App({ provider: initProvider, model: initModel, tools: baseTools
   }, [])
 
   const handleSubmit = useCallback(async (input: string) => {
+    // any input other than a repeated /clear cancels a pending clear confirm.
+    if (clearArmedRef.current && input.trim().split(/\s+/)[0] !== '/clear') {
+      clearArmedRef.current = false
+    }
+
     if (input.startsWith('!')) {
       if (handleBashCommand(input, setDisplayMessages)) return
     }
@@ -344,7 +371,7 @@ export function App({ provider: initProvider, model: initModel, tools: baseTools
       }, triggerSyntheticTurn, process.cwd(), {
         active: activeSkills,
         setActive: setActiveSkills,
-      })
+      }, clearConversation)
       if (handled) return
     }
 

@@ -128,12 +128,21 @@ describe('handleSlashCommand: dispatch', () => {
     expect(exit.calls.length).toBe(1)
   })
 
-  it('/clear calls setMessages with []', () => {
+  it('/clear calls setMessages with [] when no clearConversation host is wired', () => {
     const setMessages = spy<[any]>()
     const result = handleSlashCommand('/clear', 'm', makeProfile(), spy(), setMessages, spy())
     expect(result).toBe(true)
     expect(setMessages.calls.length).toBe(1)
     expect(setMessages.calls[0]![0]).toEqual([])
+  })
+
+  it('/clear delegates to clearConversation (model reset) when the host provides it', () => {
+    const setMessages = spy<[any]>()
+    const clearConversation = spy<[]>()
+    handleSlashCommand('/clear', 'm', makeProfile(), spy(), setMessages, spy(),
+      undefined, undefined, undefined, undefined, undefined, clearConversation)
+    expect(clearConversation.calls.length).toBe(1)
+    expect(setMessages.calls.length).toBe(0)
   })
 
   it('/help calls setMessages once with content containing "commands:"', () => {

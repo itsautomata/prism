@@ -84,6 +84,9 @@ export function handleSlashCommand(
     active: ReadonlySet<string>
     setActive: (next: Set<string>) => void
   },
+  // resets the model conversation (not just the visible transcript). the host
+  // implements the two-step confirm, since /clear is destructive.
+  clearConversation?: () => void,
 ): boolean {
   const parts = input.split(' ')
   const cmd = parts[0]
@@ -487,7 +490,10 @@ use the Agent tool to spawn the ${name} subagent with this task. pass agent: "${
     }
 
     case '/clear':
-      setMessages([])
+      // clear the whole conversation (model history + transcript), not just the
+      // visible messages. delegate to the host so it can confirm first.
+      if (clearConversation) clearConversation()
+      else setMessages([])
       return true
 
     default:
