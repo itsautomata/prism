@@ -73,6 +73,25 @@ describe('migrateConfig', () => {
     expect(occurrences).toBe(1)
   })
 
+  it('treats "[tuning ]" (stray space in the header) as the tuning table', () => {
+    mkdirSync(join(TEST_HOME, '.prism'), { recursive: true })
+    const cfg = [
+      'default_model = "m"',
+      '',
+      '[tuning ]',                 // stray space before the closing bracket
+      'repomap_max_files = 100',   // a non-default user value
+    ].join('\n')
+    writeFileSync(getConfigPath(), cfg, 'utf-8')
+
+    // the table is recognized, so no duplicate is appended
+    expect(migrateConfig()).toEqual([])
+    const text = readFileSync(getConfigPath(), 'utf-8')
+    expect((text.match(/^\[tuning/gm) ?? []).length).toBe(1)
+
+    // and the user's value is read, not orphaned under "tuning "
+    expect(loadConfig().tuning.repomap_max_files).toBe(100)
+  })
+
   it('migrated values are parsed correctly by loadConfig', () => {
     mkdirSync(join(TEST_HOME, '.prism'), { recursive: true })
     writeFileSync(getConfigPath(), 'default_model = "test-model"\n', 'utf-8')

@@ -369,7 +369,7 @@ function parseToml(text: string): Record<string, any> {
     // re-appends a duplicate block on every launch)
     const sectionMatch = trimmed.match(/^\[([^\]]+)\]\s*(?:#.*)?$/)
     if (sectionMatch) {
-      const key = sectionMatch[1]!
+      const key = sectionMatch[1]!.trim()
       result[key] = result[key] || {}
       currentSection = result[key]
       continue
