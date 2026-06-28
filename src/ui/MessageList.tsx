@@ -26,7 +26,7 @@ export function MessageList({ messages }: MessageListProps) {
   )
 }
 
-function MessageBlock({ message }: { message: DisplayMessage }) {
+export function MessageBlock({ message }: { message: DisplayMessage }) {
   switch (message.role) {
     case 'user':
       return (

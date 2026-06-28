@@ -1,7 +1,8 @@
 import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react'
-import { Box, useApp, useInput } from 'ink'
+import { Box, Static, useApp, useInput } from 'ink'
 import { Banner } from './Banner.js'
-import { MessageList, type DisplayMessage } from './MessageList.js'
+import { MessageBlock, type DisplayMessage } from './MessageList.js'
+import { Markdown } from './Markdown.js'
 import { PromptInput } from './PromptInput.js'
 import type { Phase as SpinnerPhase } from './spinnerPhrases.js'
 import { PermissionPrompt, type PermissionChoice } from './PermissionPrompt.js'
@@ -36,6 +37,8 @@ interface AppProps {
   initialMessages?: Message[]
   projectContext?: ProjectContext
   memory?: Memory
+  /** reset ink's frame cache after a raw screen wipe (/clear, resize); see cli.ts. */
+  inkClear?: () => void
   /**
    * per-session overrides for the repo-map retrieval pass. all fields optional:
    * undefined values fall back to config.tuning defaults. `skip: true` bypasses
@@ -78,13 +81,19 @@ function rebuildDisplayMessages(messages?: Message[]): DisplayMessage[] {
   return display
 }
 
-export function App({ provider: initProvider, model: initModel, tools: baseTools, capabilities: initCaps, session, initialMessages, projectContext: initProjectContext, memory, repoMapOverride }: AppProps) {
+export function App({ provider: initProvider, model: initModel, tools: baseTools, capabilities: initCaps, session, initialMessages, projectContext: initProjectContext, memory, inkClear, repoMapOverride }: AppProps) {
   const [provider, setProvider] = useState<ProviderBridge>(initProvider)
   const [model, setModel] = useState(initModel)
   const [caps, setCaps] = useState(initCaps)
   const { exit } = useApp()
 
   const [displayMessages, setDisplayMessages] = useState<DisplayMessage[]>(() => rebuildDisplayMessages(initialMessages))
+  // the in-flight assistant text. rendered live below the transcript, then
+  // committed to displayMessages (and cleared) once the segment finalizes.
+  const [streamingText, setStreamingText] = useState('')
+  // bumping this remounts <Static> (via key), making it reprint every current
+  // item — used to redraw cleanly after /clear and after a terminal resize.
+  const [clearEpoch, setClearEpoch] = useState(0)
   const [isLoading, setIsLoading] = useState(false)
   // synchronous re-entrancy guard for submits. isLoading is async react state
   // and flips a tick late, leaving a window where two fast Enters both submit.
@@ -144,10 +153,33 @@ export function App({ provider: initProvider, model: initModel, tools: baseTools
     messages.length = 0
     session.messages = messages
     setDisplayMessages([])
+    setStreamingText('')
     setTokenInfo('')
     setTurnCount(0)
+    // <Static> output is permanent; wipe screen + scrollback and remount Static
+    // so /clear visually clears instead of leaving the old transcript behind.
+    process.stdout.write('\x1b[2J\x1b[3J\x1b[H')
+    inkClear?.()
+    setClearEpoch(e => e + 1)
     saveSession(session)
-  }, [messages, session])
+  }, [messages, session, inkClear])
+
+  // a terminal resize reflows the committed <Static> output and desyncs ink's
+  // frame, leaving artifacts (a repeated input border). debounce, then wipe and
+  // remount so the whole view redraws cleanly at the new width.
+  useEffect(() => {
+    let t: ReturnType<typeof setTimeout> | null = null
+    const onResize = () => {
+      if (t) clearTimeout(t)
+      t = setTimeout(() => {
+        process.stdout.write('\x1b[2J\x1b[3J\x1b[H')
+        inkClear?.()
+        setClearEpoch(e => e + 1)
+      }, 100)
+    }
+    process.stdout.on('resize', onResize)
+    return () => { process.stdout.off('resize', onResize); if (t) clearTimeout(t) }
+  }, [])
 
   // Agent tool is built once with the initial runtime context bound in closure.
   // its onProgress callback reaches into setDisplayMessages so subagent events
@@ -260,58 +292,67 @@ export function App({ provider: initProvider, model: initModel, tools: baseTools
       })) {
         switch (event.type) {
           case 'text':
+            // accumulate into the live region only; commit on finalize.
             currentText += event.text
-            setDisplayMessages(prev => {
-              const updated = [...prev]
-              const last = updated[updated.length - 1]
-              if (last?.role === 'assistant' && last.isStreaming) { last.text = currentText }
-              else { updated.push({ role: 'assistant', text: currentText, isStreaming: true }) }
-              return updated
-            })
+            setStreamingText(currentText)
             break
-          case 'tool_start':
+          case 'tool_start': {
             setSpinnerPhase('running')
             setSpinnerTool(event.name)
-            setDisplayMessages(prev => [...prev, { role: 'tool_call', text: '', toolName: event.name }])
+            const seg = currentText
+            currentText = ''
+            setStreamingText('')
+            setDisplayMessages(prev => {
+              const next = [...prev]
+              if (seg) next.push({ role: 'assistant', text: seg })
+              next.push({ role: 'tool_call', text: '', toolName: event.name })
+              return next
+            })
             break
+          }
           case 'tool_end':
             setSpinnerPhase('after-tool')
             setSpinnerTool(event.name)
-            setDisplayMessages(prev => [...prev, { role: 'tool_result', text: event.result, isError: event.isError }])
             currentText = ''
+            setDisplayMessages(prev => [...prev, { role: 'tool_result', text: event.result, isError: event.isError }])
             break
           case 'token_update':
             setTokenInfo(event.formatted)
             break
-          case 'done':
+          case 'done': {
             // surface unusual exit reasons so silent failures don't look like the model went idle
-            if (event.reason === 'empty_turn_cap') {
-              setDisplayMessages(prev => [...prev, {
-                role: 'tool_result',
-                text: 'the model went silent after running tools (2 nudges, no answer). try a stronger model with /model, or rephrase the question.',
-                isError: true,
-              }])
-            } else if (event.reason === 'max_turns') {
-              setDisplayMessages(prev => [...prev, {
-                role: 'tool_result',
-                text: `max turns reached (${event.turnCount}). the model may be looping. try /clear or rephrase.`,
-                isError: true,
-              }])
-            } else if (event.reason === 'user_denied') {
-              setDisplayMessages(prev => [...prev, {
-                role: 'tool_result',
-                text: 'permission denied. tell prism what to do instead.',
-                isError: false,
-              }])
-            }
-            setTimeout(() => {
-              setTurnCount(event.turnCount)
-              setDisplayMessages(prev => prev.map(m => m.isStreaming ? { ...m, isStreaming: false } : m))
-            }, 0)
+            const reasonMsg: DisplayMessage | null =
+              event.reason === 'empty_turn_cap'
+                ? { role: 'tool_result', text: 'the model went silent after running tools (2 nudges, no answer). try a stronger model with /model, or rephrase the question.', isError: true }
+                : event.reason === 'max_turns'
+                ? { role: 'tool_result', text: `max turns reached (${event.turnCount}). the model may be looping. try /clear or rephrase.`, isError: true }
+                : event.reason === 'user_denied'
+                ? { role: 'tool_result', text: 'permission denied. tell prism what to do instead.', isError: false }
+                : null
+            const seg = currentText
+            currentText = ''
+            setStreamingText('')
+            setDisplayMessages(prev => {
+              const next = [...prev]
+              if (seg) next.push({ role: 'assistant', text: seg })
+              if (reasonMsg) next.push(reasonMsg)
+              return next
+            })
+            setTimeout(() => setTurnCount(event.turnCount), 0)
             break
-          case 'error':
-            setDisplayMessages(prev => [...prev, { role: 'tool_result', text: event.error, isError: true }])
+          }
+          case 'error': {
+            const seg = currentText
+            currentText = ''
+            setStreamingText('')
+            setDisplayMessages(prev => {
+              const next = [...prev]
+              if (seg) next.push({ role: 'assistant', text: seg })
+              next.push({ role: 'tool_result', text: event.error, isError: true })
+              return next
+            })
             break
+          }
         }
       }
     } catch (error) {
@@ -320,6 +361,14 @@ export function App({ provider: initProvider, model: initModel, tools: baseTools
         setDisplayMessages(prev => [...prev, { role: 'tool_result', text: `error: ${msg}`, isError: true }])
       }
     }
+
+    // safety net: if the loop ended without a 'done'/'error' (e.g. an abort
+    // mid-stream), commit any uncommitted live text and clear the live region.
+    if (currentText) {
+      const seg = currentText
+      setDisplayMessages(prev => [...prev, { role: 'assistant', text: seg }])
+    }
+    setStreamingText('')
 
     if (controller.signal.aborted) {
       messages.push({ role: 'user', content: [{ type: 'text', text: 'the user interrupted the current operation. stop what you were doing and ask what they want instead.' }] })
@@ -402,11 +451,26 @@ export function App({ provider: initProvider, model: initModel, tools: baseTools
 
   return (
     <Box flexDirection="column" padding={1}>
-      <Banner model={model} provider={provider.name} maxTools={caps.maxTools}
-        rulesCount={profile.rules.length} isResumed={initialMessages !== undefined && initialMessages.length > 0}
-        inPlanMode={inPlanMode} />
       <Box flexDirection="column" flexGrow={1}>
-        <MessageList messages={displayMessages} />
+        {/* banner + finalized messages render once into native scrollback (banner
+            first so it stays at the top); only the live region below repaints. */}
+        <Static key={clearEpoch} items={[
+          { kind: 'banner' as const },
+          ...displayMessages.map(message => ({ kind: 'message' as const, message })),
+        ]}>
+          {(row, i) => row.kind === 'banner'
+            ? (
+              <Banner key="banner" model={model} provider={provider.name} maxTools={caps.maxTools}
+                rulesCount={profile.rules.length} isResumed={initialMessages !== undefined && initialMessages.length > 0}
+                inPlanMode={inPlanMode} />
+            )
+            : <MessageBlock key={i} message={row.message} />}
+        </Static>
+        {streamingText.length > 0 && (
+          <Box marginLeft={2}>
+            <Markdown text={streamingText} />
+          </Box>
+        )}
         <PermissionPrompt toolName={pendingPermission?.toolName ?? null} description={pendingPermission?.description ?? null}
           onDecision={(choice) => { pendingPermission?.resolve(choice); setPendingPermission(null) }} />
       </Box>
