@@ -37,8 +37,8 @@ describe('VerifyTool', () => {
     expect(perm.behavior === 'ask' && perm.message).toContain('npx vitest run')
   })
 
-  it('declares itself read-only', () => {
-    expect(VerifyTool.isReadOnly({ command: 'pytest' })).toBe(true)
+  it('is not read-only: it runs an arbitrary shell command', () => {
+    expect(VerifyTool.isReadOnly({ command: 'pytest' })).toBe(false)
   })
 
   it('declares itself not concurrency-safe (build/test pipelines serialize)', () => {

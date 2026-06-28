@@ -72,11 +72,12 @@ export const VerifyTool = buildTool<VerifyInput>({
     }
   },
 
-  // verification commands are observation, not mutation of the working tree.
-  // they may have incidental side effects (cache writes, coverage reports)
-  // but do not change source files the operator is authoring.
+  // Verify runs an arbitrary shell command, so it is not read-only: the model
+  // chooses the command, and "tests" is only a convention. isReadOnly is a
+  // hint, but claiming read-only here misrepresents the capability. the gate is
+  // checkPermissions ('ask') below.
   isReadOnly(): boolean {
-    return true
+    return false
   },
 
   isConcurrencySafe(): boolean {
