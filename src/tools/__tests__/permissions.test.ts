@@ -28,6 +28,14 @@ describe('permissions', () => {
     expect(isSessionAllowed('Write')).toBe(true)
   })
 
+  it('subagents (respectSessionRules=false) ignore session-allow so their deny floor holds', () => {
+    allowForSession('Verify')
+    // main conversation: session-allow short-circuits the prompt
+    expect(needsPermission('Verify', { behavior: 'ask', message: '' })).toBe(false)
+    // subagent: session-allow is ignored, so the resolver is still consulted
+    expect(needsPermission('Verify', { behavior: 'ask', message: '' }, false)).toBe(true)
+  })
+
   it('session-allowed tools skip permission', () => {
     allowForSession('Bash')
     expect(needsPermission('Bash', { behavior: 'ask', message: '' })).toBe(false)

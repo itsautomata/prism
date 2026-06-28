@@ -190,7 +190,9 @@ export async function runAgent(agent: Agent, task: AgentTask): Promise<AgentResu
     // execute tools through the agent-derived resolver.
     // 'deny-writes' floors writes; 'inherit' threads the parent's prompt through.
     const toolResults: import('../types/index.js').ToolResultBlock[] = []
-    for await (const result of runToolCalls(toolUseBlocks, tools, context, resolver)) {
+    // respectSessionRules: false — the subagent's resolver is the floor; a
+    // main-conversation session-allow must not let a tool skip it.
+    for await (const result of runToolCalls(toolUseBlocks, tools, context, resolver, false)) {
       const content = typeof result.content === 'string' ? result.content : JSON.stringify(result.content)
       emit({
         type: 'tool_result',

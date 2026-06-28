@@ -49,13 +49,18 @@ export function clearSessionRules(): void {
  * or 'deny'. a tool's isReadOnly flag is a concurrency/UI hint and deliberately
  * does not gate here — letting it short-circuit let a command like
  * `echo ok && rm -rf ~` (first token "safe") skip the prompt entirely.
+ *
+ * respectSessionRules is false for subagent calls: a global "allow for session"
+ * grant from the main conversation must not let a tool skip a subagent's
+ * deny-writes resolver, which would breach the subagent sandbox.
  */
 export function needsPermission(
   toolName: string,
   permissionResult: PermissionResult,
+  respectSessionRules = true,
 ): boolean {
-  // already allowed for this session
-  if (isSessionAllowed(toolName)) return false
+  // already allowed for this session (main conversation only)
+  if (respectSessionRules && isSessionAllowed(toolName)) return false
 
   // tool says allow
   if (permissionResult.behavior === 'allow') return false

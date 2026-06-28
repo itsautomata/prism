@@ -6,7 +6,7 @@
 
 import type { Tool, ToolResult, ToolContext } from './Tool.js'
 import type { ToolUseBlock, ToolResultBlock } from '../types/index.js'
-import { needsPermission, allowForSession, isSessionAllowed } from './permissions.js'
+import { needsPermission, allowForSession } from './permissions.js'
 
 const MAX_CONCURRENCY = 10
 
@@ -38,14 +38,17 @@ export async function* runToolCalls(
   tools: Tool[],
   context: ToolContext,
   askPermission?: PermissionResolver,
+  // subagents pass false: a global "allow for session" grant from the main
+  // conversation must not let a tool skip a subagent's deny-writes floor.
+  respectSessionRules = true,
 ): AsyncGenerator<ToolResultBlock> {
   const batches = partitionIntoBatches(toolUseBlocks, tools)
 
   for (const batch of batches) {
     if (batch.concurrent) {
-      yield* runConcurrent(batch.blocks, tools, context, askPermission)
+      yield* runConcurrent(batch.blocks, tools, context, askPermission, respectSessionRules)
     } else {
-      yield* runSerial(batch.blocks, tools, context, askPermission)
+      yield* runSerial(batch.blocks, tools, context, askPermission, respectSessionRules)
     }
   }
 }
@@ -85,6 +88,7 @@ async function* runConcurrent(
   tools: Tool[],
   context: ToolContext,
   askPermission?: PermissionResolver,
+  respectSessionRules = true,
 ): AsyncGenerator<ToolResultBlock> {
   // run in waves of MAX_CONCURRENCY. every emitted tool_use must yield a
   // tool_result: a missing one orphans the call and the provider rejects the
@@ -92,7 +96,7 @@ async function* runConcurrent(
   for (let i = 0; i < blocks.length; i += MAX_CONCURRENCY) {
     const wave = blocks.slice(i, i + MAX_CONCURRENCY)
     const results = await Promise.all(
-      wave.map(block => executeToolCall(block, tools, context, askPermission)),
+      wave.map(block => executeToolCall(block, tools, context, askPermission, respectSessionRules)),
     )
     for (const result of results) {
       yield {
@@ -111,9 +115,10 @@ async function* runSerial(
   tools: Tool[],
   context: ToolContext,
   askPermission?: PermissionResolver,
+  respectSessionRules = true,
 ): AsyncGenerator<ToolResultBlock> {
   for (const block of blocks) {
-    const result = await executeToolCall(block, tools, context, askPermission)
+    const result = await executeToolCall(block, tools, context, askPermission, respectSessionRules)
     yield {
       type: 'tool_result',
       toolUseId: result.toolUseId,
@@ -164,6 +169,7 @@ async function executeToolCall(
   tools: Tool[],
   context: ToolContext,
   askPermission?: PermissionResolver,
+  respectSessionRules = true,
 ): Promise<ToolCallResult> {
   // refuse calls whose arguments arrived as malformed JSON. running with the
   // silently-empty fallback input would take a wrong action with no signal.
@@ -227,7 +233,7 @@ async function executeToolCall(
   }
 
   // ask user if needed. checkPermissions is the single source of truth.
-  if (needsPermission(tool.name, permission)) {
+  if (needsPermission(tool.name, permission, respectSessionRules)) {
     // fail closed: a gated action with no resolver must not execute silently
     if (!askPermission) {
       return {
