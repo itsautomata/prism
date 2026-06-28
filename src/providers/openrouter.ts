@@ -17,7 +17,6 @@ import type {
   ContentBlock,
   Message,
   StreamEvent,
-  ToolUseBlock,
 } from '../types/index.js'
 import { getOpenRouterCatalog, type OpenRouterModelMeta } from '../completion/spec.js'
 
@@ -299,23 +298,20 @@ export class OpenRouterProvider implements ProviderBridge {
           }
         }
 
-        // finish
-        if (choice.finish_reason) {
-          // emit completed tool calls
-          for (const [, tc] of toolCalls) {
-            if (tc.args) {
-              yield { type: 'tool_call_delta', id: tc.id, inputJson: tc.args }
-            }
-            yield { type: 'tool_call_end', id: tc.id }
-          }
-        }
-
         if (chunk.usage) {
           inputTokens = chunk.usage.prompt_tokens
           outputTokens = chunk.usage.completion_tokens
           cachedInputTokens = extractCachedTokens(chunk.usage)
         }
       }
+    }
+
+    // flush accumulated tool calls once the stream ends — whether it closed with
+    // a finish_reason chunk or was cut off mid-stream — so a truncated stream
+    // still yields each call's delta + end rather than dropping it.
+    for (const [, tc] of toolCalls) {
+      if (tc.args) yield { type: 'tool_call_delta', id: tc.id, inputJson: tc.args }
+      yield { type: 'tool_call_end', id: tc.id }
     }
 
     const stopReason = toolCalls.size > 0 ? 'tool_use' : 'end_turn'
