@@ -1,8 +1,14 @@
-# prism
+
+
+<p align="center">
+  <img src="assets/prism_sc_draft.gif" alt="prism" width="330">
+</p>
+
+## prism
 
 **model agnostic, local-first AI coding assistant**
 
-Prism is an open source coding assistant that runs locally on your machine through Ollama, or cloud through OpenRouter (300+ models).
+prism is an open source coding assistant that runs locally on your machine through Ollama, or cloud through OpenRouter (300+ models).
 
 
 > actively built and tested. expect breaking changes. decentralized intelligence is cool.
